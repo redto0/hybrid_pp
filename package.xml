@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-    <name>TODO_PACKAGE_NAME</name>
+    <name>hybrid_pp</name>
     <version>0.1.0</version>
     <description>A node template</description>
     <maintainer email="avealov@umich.edu">Andrew Ealovega</maintainer>
@@ -14,11 +14,8 @@
     <!--Messages TODO_EXTRA-->
     <depend>ackermann_msgs</depend>
     <depend>sensor_msgs</depend>
-    <depend>std_msgs</depend>
+    <depend>nav_msgs</depend>
 
-    <!--OpenCv Things TODO_EXTRA-->
-    <depend>cv_bridge</depend>
-    <depend>libopencv-dev</depend>
 
     <test_depend>ament_lint_auto</test_depend>
     <test_depend>ament_cmake_flake8</test_depend>
