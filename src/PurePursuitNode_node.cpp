@@ -8,20 +8,24 @@ PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions& options) : Node("Pur
     float x = this->declare_parameter<float>("foo", -10.0);
 
     // Pub Sub
-    this->sub =
-        this->create_subscription<std_msgs::msg::String>("/str", 1, std::bind(&PurePursuitNode::sub_cb, this, _1));
-    this->pub = this->create_publisher<std_msgs::msg::String>("/run_folder", 1);
+    sub = this->create_subscription<geometry_msgs::msg::PoseStamped>("/goal_pose", 1, std::bind(&PurePursuitNode::ackerman_cb, this, _1));
+    pub = this->create_publisher<ackermann_msgs::msg::AckermannDrive>("/nav_ack_vel", 1);
 
     // Log a sample log
     RCLCPP_INFO(this->get_logger(), "You passed %f", x);
 
-    // Send a sample message
-    std_msgs::msg::String msg{};
-    msg.data = std::string{"Hello World!"};
-    pub->publish(msg);
 }
 
-void PurePursuitNode::sub_cb(const std_msgs::msg::String::SharedPtr msg) {
-    // Echo message
-    this->pub->publish(*msg);
+void PurePursuitNode::ackerman_cb(const geometry_msgs::msg::PoseStamped::SharedPtr msg) {
+    // Log a sample log
+    RCLCPP_INFO(this->get_logger(), "I heard: '%f'", msg->pose.position.x);
+
+    // Create a message to publish
+    auto ack_msg = ackermann_msgs::msg::AckermannDrive();
+    ack_msg.steering_angle = 0.0;
+    ack_msg.speed = 0.0;
+
+    // Publish the message
+    pub->publish(ack_msg);
+    
 }

@@ -2,16 +2,18 @@
 
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/string.hpp"
+#include "ackermann_msgs/msg/ackermann_drive.hpp"
+#include "geometry_msgs/msg/pose_stamped.hpp"
 
 class PurePursuitNode : public rclcpp::Node {
 private:
-    rclcpp::Publisher<std_msgs::msg::String>::SharedPtr pub;
+    rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr sub;
 
-    rclcpp::Subscription<std_msgs::msg::String>::SharedPtr sub;
+    rclcpp::Publisher<ackermann_msgs::msg::AckermannDrive>::SharedPtr pub;
 
 public:
     PurePursuitNode(const rclcpp::NodeOptions& options);
 
     /// subscriber callback
-    void sub_cb(std_msgs::msg::String::SharedPtr msg);
+    void ackerman_cb(geometry_msgs::msg::PoseStamped::SharedPtr msg);
 };

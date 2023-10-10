@@ -12,6 +12,7 @@ find_package(rclcpp REQUIRED)
 find_package(ackermann_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
 
 # Add source for node executable (link non-ros dependencies here)
 add_executable(hybrid_pp src/PurePursuitNode.cpp src/PurePursuitNode_node.cpp)
@@ -26,6 +27,7 @@ set(dependencies
         ackermann_msgs
         sensor_msgs
         nav_msgs
+        geometry_msgs
         )
 
 # Link ros dependencies
