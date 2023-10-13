@@ -9,6 +9,9 @@ endif ()
 # find dependencies
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(tf2 REQUIRED)
+find_package(tf2_ros REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
 find_package(ackermann_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
@@ -28,6 +31,9 @@ set(dependencies
         sensor_msgs
         nav_msgs
         geometry_msgs
+        tf2
+        tf2_geometry_msgs
+        tf2_ros
         )
 
 # Link ros dependencies
