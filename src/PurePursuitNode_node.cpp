@@ -1,8 +1,7 @@
 #include "hybrid_pp/PurePursuitNode_node.hpp"
 
-#include <algorithm> 
+#include <algorithm>
 #include <cmath>
-
 
 // For _1
 using namespace std::placeholders;
@@ -18,7 +17,8 @@ PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions& options) : Node("Pur
     speed_ = 1.0;
 
     // Pub Sub
-    goal_pose_sub_ = this->create_subscription<geometry_msgs::msg::PoseStamped>("/goal_pose", 1, std::bind(&PurePursuitNode::ackerman_cb, this, _1));
+    goal_pose_sub_ = this->create_subscription<geometry_msgs::msg::PoseStamped>(
+        "/goal_pose", 1, std::bind(&PurePursuitNode::ackerman_cb, this, _1));
     nav_ack_vel_pub_ = this->create_publisher<ackermann_msgs::msg::AckermannDrive>("/nav_ack_vel", 1);
 
     // TF
@@ -27,7 +27,6 @@ PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions& options) : Node("Pur
 
     // Initial var state
     transform_tolerance_ = tf2::durationFromSec(0.1);
-
 }
 
 // base_link to odom
@@ -48,7 +47,7 @@ void PurePursuitNode::ackerman_cb(const geometry_msgs::msg::PoseStamped::SharedP
 
     transformed_goal_pose = tf_buffer_->transform(msg_to_goal_pose, "rear_axle", transform_tolerance_);
 
-    // Calc look ahead distance 
+    // Calc look ahead distance
     look_ahead_distance_ = std::clamp(k_dd_ * speed_, min_look_ahead_distance_, max_look_ahead_distance_);
 
     RCLCPP_INFO(this->get_logger(), "Robot pose x: '%f'", transformed_robot_pose.pose.pose.position.x);
@@ -60,11 +59,12 @@ void PurePursuitNode::ackerman_cb(const geometry_msgs::msg::PoseStamped::SharedP
     auto distance = [](const geometry_msgs::msg::Point& p1, const geometry_msgs::msg::Point& p2) {
         return std::sqrt(std::pow(p1.x - p2.x, 2) + std::pow(p1.y - p2.y, 2));
     };
-    
+
     float steering_angle_;
 
     // Calculate the angle between the robot and the goal
-    alpha_ = std::atan2(transformed_goal_pose.pose.pose.position.y - transformed_robot_pose.pose.pose.position.y, transformed_goal_pose.pose.pose.position.x - transformed_robot_pose.pose.pose.position.x);
+    alpha_ = std::atan2(transformed_goal_pose.pose.pose.position.y - transformed_robot_pose.pose.pose.position.y,
+                        transformed_goal_pose.pose.pose.position.x - transformed_robot_pose.pose.pose.position.x);
 
     // Calculate the steering angle (needs wheel base) TODO
     steering_angle_ = std::atan(2.0 * 1.08 * std::sin(alpha_) / look_ahead_distance_);
@@ -73,8 +73,7 @@ void PurePursuitNode::ackerman_cb(const geometry_msgs::msg::PoseStamped::SharedP
     ackermann_msgs::msg::AckermannDrive ack_msg;
     ack_msg.steering_angle = steering_angle_;
     ack_msg.speed = speed_;
-    
+
     // Publish the message
     nav_ack_vel_pub_->publish(ack_msg);
-    
 }

@@ -1,26 +1,24 @@
 #pragma once
 
-#include "rclcpp/rclcpp.hpp"
-#include "std_msgs/msg/string.hpp"
-#include "ackermann_msgs/msg/ackermann_drive.hpp"
-#include "geometry_msgs/msg/pose_stamped.hpp"
-
 #include <tf2/exceptions.h>
-#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
 
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+
+#include "ackermann_msgs/msg/ackermann_drive.hpp"
+#include "geometry_msgs/msg/pose_stamped.hpp"
+#include "rclcpp/rclcpp.hpp"
+#include "std_msgs/msg/string.hpp"
 
 class PurePursuitNode : public rclcpp::Node {
 private:
-
     // Var
     float look_ahead_distance_;
     float target_point_x_, target_point_y_;
-    float alpha_; 
+    float alpha_;
     geometry_msgs::msg::PoseStamped current_pose_;
     geometry_msgs::msg::TransformStamped transformStamped_;
-
 
     // Parameters
     tf2::Duration transform_tolerance_;
