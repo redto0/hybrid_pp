@@ -30,7 +30,7 @@ PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions & options)
     "/odom_ack", 1, std::bind(&PurePursuitNode::odom_speed_cb, this, _1));
   nav_ack_vel_pub_ = this->create_publisher<ackermann_msgs::msg::AckermannDrive>("/nav_ack_vel", 1);
   path_vis_marker_pub_ =
-    this->create_publisher<visualization_msgs::msg::Marker>("/visualization_marker", 0);
+    this->create_publisher<visualization_msgs::msg::Marker>("visualization_marker", 1);
 
   // TF
   tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
@@ -89,26 +89,17 @@ void PurePursuitNode::ackerman_cb(const geometry_msgs::msg::PoseStamped::SharedP
   // Publish the message
   nav_ack_vel_pub_->publish(ack_msg);
 
-  marker.header.frame_id = "/base_link";
+  marker.header.frame_id = "/rear_axle";
   marker.header.stamp = this->get_clock()->now();
-  marker.type = visualization_msgs::msg::Marker::SPHERE;
+  marker.type = visualization_msgs::msg::Marker::LINE_STRIP;
   marker.action = visualization_msgs::msg::Marker::ADD;
   marker.ns = "my_namespace";
   marker.id = 0;
-  marker.pose.position.x = 0;
-  marker.pose.position.y = 0;
-  marker.pose.position.z = 0;
-  marker.pose.orientation.x = 0.0;
-  marker.pose.orientation.y = 0.0;
-  marker.pose.orientation.z = 0.0;
   marker.pose.orientation.w = 1.0;
-  marker.scale.x = 1;
-  marker.scale.y = 1;
-  marker.scale.z = 1;
+  marker.scale.x = 0.1;
   marker.color.a = 1.0;  // Don't forget to set the alpha!
-  marker.color.r = 0.0;
   marker.color.g = 1.0;
-  marker.color.b = 0.0;
+  marker.points.push_back(transformed_goal_pose.pose.pose.position);
 
   path_vis_marker_pub_->publish(marker);
 }
