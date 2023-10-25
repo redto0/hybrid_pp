@@ -14,11 +14,16 @@ PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions& options) : Node("Pur
     min_look_ahead_distance_ = 0.0;
     max_look_ahead_distance_ = 1.0;
     k_dd_ = 1.0;
-    speed_ = 1.0;
+    rear_axle_frame_ = "rear_axle";
+
+    // Var init
+    speed_ = 0;
 
     // Pub Sub
     goal_pose_sub_ = this->create_subscription<geometry_msgs::msg::PoseStamped>(
         "/goal_pose", 1, std::bind(&PurePursuitNode::ackerman_cb, this, _1));
+    odom_ack_sub_ = this->create_subscription<ackermann_msgs::msg::AckermannDrive>(
+        "/odom_ack", 1, std::bind(&PurePursuitNode::odom_speed_cb, this, _1));
     nav_ack_vel_pub_ = this->create_publisher<ackermann_msgs::msg::AckermannDrive>("/nav_ack_vel", 1);
 
     // TF
@@ -34,7 +39,6 @@ void PurePursuitNode::ackerman_cb(const geometry_msgs::msg::PoseStamped::SharedP
     // Log a sample log
     RCLCPP_INFO(this->get_logger(), "I heard the message");
 
-    geometry_msgs::msg::PoseWithCovarianceStamped robot_pose;
     geometry_msgs::msg::PoseWithCovarianceStamped msg_to_goal_pose;
     geometry_msgs::msg::PoseWithCovarianceStamped transformed_robot_pose;
     geometry_msgs::msg::PoseWithCovarianceStamped transformed_goal_pose;
@@ -45,13 +49,11 @@ void PurePursuitNode::ackerman_cb(const geometry_msgs::msg::PoseStamped::SharedP
     msg_to_goal_pose.pose.pose.position.y = msg->pose.position.y;
     msg_to_goal_pose.pose.pose.position.z = msg->pose.position.z;
 
-    transformed_goal_pose = tf_buffer_->transform(msg_to_goal_pose, "rear_axle", transform_tolerance_);
+    transformed_goal_pose = tf_buffer_->transform(msg_to_goal_pose, rear_axle_frame_, transform_tolerance_);
 
     // Calc look ahead distance
     look_ahead_distance_ = std::clamp(k_dd_ * speed_, min_look_ahead_distance_, max_look_ahead_distance_);
 
-    RCLCPP_INFO(this->get_logger(), "Robot pose x: '%f'", transformed_robot_pose.pose.pose.position.x);
-    RCLCPP_INFO(this->get_logger(), "Robot pose y: '%f'", transformed_robot_pose.pose.pose.position.y);
     RCLCPP_INFO(this->get_logger(), "Goal pose x: '%f'", transformed_goal_pose.pose.pose.position.x);
     RCLCPP_INFO(this->get_logger(), "Goal pose y: '%f'", transformed_goal_pose.pose.pose.position.y);
 
@@ -77,3 +79,5 @@ void PurePursuitNode::ackerman_cb(const geometry_msgs::msg::PoseStamped::SharedP
     // Publish the message
     nav_ack_vel_pub_->publish(ack_msg);
 }
+
+void PurePursuitNode::odom_speed_cb(const ackermann_msgs::msg::AckermannDrive::SharedPtr msg) { speed_ = msg->speed; }
