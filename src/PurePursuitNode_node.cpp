@@ -16,11 +16,12 @@ PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions& options) : Node("Pur
     // Params (tune theses)
     min_look_ahead_distance_ = 3.0;
     max_look_ahead_distance_ = 10.0;
-    k_dd_ = 5.0;
+    k_dd_ = 0.2;
     rear_axle_frame_ = "rear_axle";
 
     // Var init
-    speed_ = 0;
+    current_speed_ = 0;
+    set_speed_ = 0;
 
     // Pub Sub
     goal_pose_sub_ = this->create_subscription<geometry_msgs::msg::PoseStamped>(
@@ -56,7 +57,7 @@ void PurePursuitNode::ackerman_cb(const geometry_msgs::msg::PoseStamped::SharedP
     transformed_goal_pose = tf_buffer_->transform(msg_to_goal_pose, rear_axle_frame_, transform_tolerance_);
 
     // Calc look ahead distance
-    look_ahead_distance_ = std::clamp(k_dd_ * speed_, min_look_ahead_distance_, max_look_ahead_distance_);
+    look_ahead_distance_ = std::clamp(k_dd_ * current_speed_, min_look_ahead_distance_, max_look_ahead_distance_);
 
     RCLCPP_INFO(this->get_logger(), "Goal pose x: '%f'", transformed_goal_pose.pose.pose.position.x);
     RCLCPP_INFO(this->get_logger(), "Goal pose y: '%f'", transformed_goal_pose.pose.pose.position.y);
@@ -77,13 +78,15 @@ void PurePursuitNode::ackerman_cb(const geometry_msgs::msg::PoseStamped::SharedP
     // Create the ackermann message
     ackermann_msgs::msg::AckermannDrive ack_msg;
     ack_msg.steering_angle = steering_angle_;
-    ack_msg.speed = speed_;
-
-    // Publish the message
-    nav_ack_vel_pub_->publish(ack_msg);
 
     auto theta = steering_angle_;
     double radius = 1.08 / std::tan(theta);
+
+    set_speed_ = std::sqrt(9.81 * std::abs(radius));
+    ack_msg.speed = set_speed_;
+
+    // Publish the message
+    nav_ack_vel_pub_->publish(ack_msg);
 
     auto y1 = 2 * alpha_;
 
@@ -151,8 +154,9 @@ void PurePursuitNode::ackerman_cb(const geometry_msgs::msg::PoseStamped::SharedP
     path_vis_marker_pub_->publish(ld);
 
     marker.points.clear();
+    ld.points.clear();
 }
 
 void PurePursuitNode::odom_speed_cb(const nav_msgs::msg::Odometry::SharedPtr msg) {
-    speed_ = msg->twist.twist.linear.x;
+    current_speed_ = msg->twist.twist.linear.x;
 }

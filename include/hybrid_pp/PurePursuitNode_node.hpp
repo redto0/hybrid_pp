@@ -19,7 +19,8 @@ private:
     float look_ahead_distance_;
     float target_point_x_, target_point_y_;
     float alpha_;
-    float speed_;
+    float current_speed_;
+    float set_speed_;
 
     // Parameters
     tf2::Duration transform_tolerance_;
