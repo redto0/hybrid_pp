@@ -8,6 +8,7 @@
 
 #include "ackermann_msgs/msg/ackermann_drive.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
+#include "nav_msgs/msg/odometry.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/string.hpp"
 #include "visualization_msgs/msg/marker.hpp"
@@ -33,7 +34,7 @@ private:
 
     // Pub Sub
     rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr goal_pose_sub_;
-    rclcpp::Subscription<ackermann_msgs::msg::AckermannDrive>::SharedPtr odom_ack_sub_;
+    rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
     rclcpp::Publisher<ackermann_msgs::msg::AckermannDrive>::SharedPtr nav_ack_vel_pub_;
     rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr path_vis_marker_pub_;
 
@@ -42,5 +43,5 @@ public:
 
     /// subscriber callback
     void ackerman_cb(geometry_msgs::msg::PoseStamped::SharedPtr msg);
-    void odom_speed_cb(ackermann_msgs::msg::AckermannDrive::SharedPtr msg);
+    void odom_speed_cb(nav_msgs::msg::Odometry::SharedPtr msg);
 };
