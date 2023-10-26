@@ -11,17 +11,11 @@ using namespace std::chrono_literals;
 
 visualization_msgs::msg::Marker marker;
 
-// 1.08
-// R = ?
-// theta = x
-
-// r = 1/tan(theta)
-
 PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions& options) : Node("PurePursuitNode", options) {
     // Params (tune theses)
     min_look_ahead_distance_ = 0.0;
-    max_look_ahead_distance_ = 1.0;
-    k_dd_ = 1.0;
+    max_look_ahead_distance_ = 10.0;
+    k_dd_ = 5.0;
     rear_axle_frame_ = "rear_axle";
 
     // Var init
@@ -74,8 +68,7 @@ void PurePursuitNode::ackerman_cb(const geometry_msgs::msg::PoseStamped::SharedP
     float steering_angle_;
 
     // Calculate the angle between the robot and the goal
-    alpha_ = std::atan2(transformed_goal_pose.pose.pose.position.y - transformed_robot_pose.pose.pose.position.y,
-                        transformed_goal_pose.pose.pose.position.x - transformed_robot_pose.pose.pose.position.x);
+    alpha_ = std::atan2(transformed_goal_pose.pose.pose.position.y, transformed_goal_pose.pose.pose.position.x);
 
     // Calculate the steering angle (needs wheel base) TODO
     steering_angle_ = std::atan(2.0 * 1.08 * std::sin(alpha_) / look_ahead_distance_);
@@ -107,10 +100,11 @@ void PurePursuitNode::ackerman_cb(const geometry_msgs::msg::PoseStamped::SharedP
     marker.color.g = 1.0;
 
     RCLCPP_INFO(this->get_logger(), "radius: '%f'", radius);
+    RCLCPP_INFO(this->get_logger(), "steering angle: '%f'", theta);
 
     for (double index = 0; index <= 2 * 3.14; index += 0.1) {
-        graphPoint.x = radius * std::sin(index);
-        graphPoint.y = radius * std::cos(index) + radius;
+        graphPoint.x = radius * std::cos(index);
+        graphPoint.y = radius * std::sin(index) + radius;
         // RCLCPP_INFO(this->get_logger(), "graph point x: '%f'", graphPoint.x);
         // RCLCPP_INFO(this->get_logger(), "graph point y: '%f'", graphPoint.y);
 
