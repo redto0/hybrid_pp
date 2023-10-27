@@ -18,8 +18,11 @@ class PurePursuitNode : public rclcpp::Node {
 private:
     // Var
 
+    /// The ackerman message to be published to the /nav_ack_vel topic with steering angle and speed
+    ackermann_msgs::msg::AckermannDrive ack_msg;
+
     /// Position used for plotting the visualization markers
-    geometry_msgs::msg::PoseWithCovarianceStamped graph_point;
+    geometry_msgs::msg::Point graph_point;
 
     /// Varibale to convert target pose message to a PoseWithCovarianceStamped
     geometry_msgs::msg::PoseWithCovarianceStamped msg_to_goal_pose;
@@ -72,7 +75,9 @@ private:
     rclcpp::Publisher<ackermann_msgs::msg::AckermannDrive>::SharedPtr nav_ack_vel_pub;
     rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr path_vis_marker_pub;
 
-    float distance_from_rear_axle(const geometry_msgs::msg::PoseWithCovarianceStamped& p1);
+    float distance(const geometry_msgs::msg::Point& p1, const geometry_msgs::msg::Point& p2) {
+        return std::sqrt(std::pow(p1.x - p2.x, 2) + std::pow(p1.y - p2.y, 2));
+    };
 
 public:
     PurePursuitNode(const rclcpp::NodeOptions& options);

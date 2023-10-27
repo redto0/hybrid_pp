@@ -16,13 +16,13 @@ PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions& options) : Node("Pur
     gravity_constant = this->declare_parameter<float>("gravity_constant", 9.81);
 
     // Var init
-    current_speed = 0;
+    current_speed = 1;
     set_speed = 0;
 
     // Pub Sub
     goal_pose_sub = this->create_subscription<geometry_msgs::msg::PoseStamped>(
         "/goal_pose", 1, std::bind(&PurePursuitNode::ackerman_cb, this, _1));
-    odom_sub = this->create_subscription<nav_msgs::msg::Odometry>("/odom", 1,
+    odom_sub = this->create_subscription<nav_msgs::msg::Odometry>("/odom_can", 1,
                                                                   std::bind(&PurePursuitNode::odom_speed_cb, this, _1));
     nav_ack_vel_pub = this->create_publisher<ackermann_msgs::msg::AckermannDrive>("/nav_ack_vel", 1);
     path_vis_marker_pub = this->create_publisher<visualization_msgs::msg::Marker>("visualization_marker", 1);
@@ -49,25 +49,24 @@ void PurePursuitNode::ackerman_cb(const geometry_msgs::msg::PoseStamped::SharedP
     // Calc look ahead distance
     look_ahead_distance = std::clamp(k_dd * current_speed, min_look_ahead_distance, max_look_ahead_distance);
 
-    // Calculate the angle between the robot and the goal
+    // Calculate the angle between the robot and the goal.
     alpha = std::atan2(transformed_goal_pose.pose.pose.position.y, transformed_goal_pose.pose.pose.position.x);
 
-    // Calculate the steering angle (needs wheel base) TODO
+    // Set the set the desired steering angle and set it to the ackerman message
     steering_angle = std::atan(2.0 * wheel_base * std::sin(alpha) / look_ahead_distance);
-
-    // Create the ackermann message
-    ackermann_msgs::msg::AckermannDrive ack_msg;
     ack_msg.steering_angle = steering_angle;
 
-    auto theta = steering_angle;
-    double radius = wheel_base / std::tan(theta);
+    // Gets the distance to the instantanious center of rotation from the center of the rear axle
+    double distance_to_icr = wheel_base / std::tan(steering_angle);
 
-    set_speed = std::sqrt(gravity_constant * std::abs(radius));
+    // Set the speed based off the eq v = sqrt(static_friction * gravity * turn_radius) with static friction being 1.
+    set_speed = std::sqrt(gravity_constant * std::abs(distance_to_icr));
     ack_msg.speed = set_speed;
 
-    // Publish the message
+    // Publish the ackerman message
     nav_ack_vel_pub->publish(ack_msg);
 
+    // Declares the path prediciton marker in the rear axle frame
     path_prediction_marker.header.frame_id = "/rear_axle";
     path_prediction_marker.header.stamp = this->get_clock()->now();
     path_prediction_marker.type = visualization_msgs::msg::Marker::LINE_STRIP;
@@ -79,6 +78,7 @@ void PurePursuitNode::ackerman_cb(const geometry_msgs::msg::PoseStamped::SharedP
     path_prediction_marker.color.a = 1.0;
     path_prediction_marker.color.g = 1.0;
 
+    // Declares the look ahead marker in the rear axle frame
     look_ahead_distance_marker.header.frame_id = "/rear_axle";
     look_ahead_distance_marker.header.stamp = this->get_clock()->now();
     look_ahead_distance_marker.type = visualization_msgs::msg::Marker::LINE_STRIP;
@@ -90,47 +90,50 @@ void PurePursuitNode::ackerman_cb(const geometry_msgs::msg::PoseStamped::SharedP
     look_ahead_distance_marker.color.a = 1.0;
     look_ahead_distance_marker.color.r = 1.0;
 
-    if (theta < 0) {
-        for (double index = 0; distance_from_rear_axle(graph_point) - look_ahead_distance <= 0; index += 0.01) {
-            graph_point.pose.pose.position.x = radius * -std::sin(index);
-            graph_point.pose.pose.position.y = radius * -std::cos(index) + radius;
+    // Standard point (0,0), this acts as the center of the rear axle
+    geometry_msgs::msg::Point zero;
 
-            path_prediction_marker.points.push_back(graph_point.pose.pose.position);
+    // If our steering angle is negative, graphing math is a little different
+    if (steering_angle < 0) {
+        // Loop runs until the point generated hits the look ahead distance raduis
+        for (double index = 0; distance(graph_point, zero) - look_ahead_distance <= 0; index += 0.01) {
+            // Sets the x and y coords using ploar coodiants the the ICR as the origin
+            graph_point.x = distance_to_icr * -std::sin(index);
+            graph_point.y = distance_to_icr * -std::cos(index) + distance_to_icr;
+
+            // Appeneds the generated point to the markers list of points
+            path_prediction_marker.points.push_back(graph_point);
         }
     } else {
-        for (double index = -3.14 / 2; distance_from_rear_axle(graph_point) - look_ahead_distance <= 0; index += 0.01) {
-            graph_point.pose.pose.position.x = radius * std::cos(index);
-            graph_point.pose.pose.position.y = radius * std::sin(index) + radius;
+        // Loop runs until the point generated hits the look ahead distance raduis
+        for (double index = -3.14 / 2; distance(graph_point, zero) - look_ahead_distance <= 0; index += 0.01) {
+            // Sets the x and y coords using ploar coodiants the the ICR as the origin
+            graph_point.x = distance_to_icr * std::cos(index);
+            graph_point.y = distance_to_icr * std::sin(index) + distance_to_icr;
 
-            path_prediction_marker.points.push_back(graph_point.pose.pose.position);
+            // Appeneds the generated point to the markers list of points
+            path_prediction_marker.points.push_back(graph_point);
         }
     }
 
-    for (double index = 0; index <= 2 * 3.14; index += 0.1) {
-        graph_point.pose.pose.position.x = look_ahead_distance * std::cos(index);
-        graph_point.pose.pose.position.y = look_ahead_distance * std::sin(index);
+    // Appeneds a list of points in a circle to the look ahead distance marker using look ahead distance as raduis
+    for (double index = 0; index <= 2 * 3.14; index += 0.01) {
+        graph_point.x = look_ahead_distance * std::cos(index);
+        graph_point.y = look_ahead_distance * std::sin(index);
 
-        look_ahead_distance_marker.points.push_back(graph_point.pose.pose.position);
+        look_ahead_distance_marker.points.push_back(graph_point);
     }
 
+    // Publish the markers to the visualization_marker topic
     path_vis_marker_pub->publish(path_prediction_marker);
     path_vis_marker_pub->publish(look_ahead_distance_marker);
 
+    // Clear the points that were published so new points can be displayed and we dont get messy overlap
     path_prediction_marker.points.clear();
     look_ahead_distance_marker.points.clear();
 }
 
 void PurePursuitNode::odom_speed_cb(const nav_msgs::msg::Odometry::SharedPtr msg) {
-    current_speed = msg->twist.twist.linear.x;
-}
-
-// distance function that works to geometry_msgs
-auto distance = [](const geometry_msgs::msg::Point& p1, const geometry_msgs::msg::Point& p2) {
-    return std::sqrt(std::pow(p1.x - p2.x, 2) + std::pow(p1.y - p2.y, 2));
-};
-
-float PurePursuitNode::distance_from_rear_axle(const geometry_msgs::msg::PoseWithCovarianceStamped& p1) {
-    auto transformed_pose = tf_buffer->transform(p1, rear_axle_frame, transform_tolerance).pose.pose.position;
-
-    return std::sqrt(std::pow(transformed_pose.x - 0, 2) + std::pow(transformed_pose.y - 0, 2));
+    // Gets the current speed of the cart
+    current_speed = 1;// msg->twist.twist.linear.x;
 }
