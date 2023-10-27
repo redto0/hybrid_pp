@@ -14,29 +14,29 @@ visualization_msgs::msg::Marker ld;
 
 PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions& options) : Node("PurePursuitNode", options) {
     // Params (tune theses)
-    min_look_ahead_distance_ = 3.0;
-    max_look_ahead_distance_ = 10.0;
-    k_dd_ = 0.2;
-    rear_axle_frame_ = "rear_axle";
+    min_look_ahead_distance = this->declare_parameter<float>("min_look_ahead_distace", 3.0);
+    max_look_ahead_distance = this->declare_parameter<float>("max_look_ahead_distace", 10.0);
+    k_dd = this->declare_parameter<float>("k_dd", 0.2);
+    rear_axle_frame = this->declare_parameter<std::string>("rear_axle_frame", "rear_axle");
 
     // Var init
-    current_speed_ = 0;
-    set_speed_ = 0;
+    current_speed = 0;
+    set_speed = 0;
 
     // Pub Sub
-    goal_pose_sub_ = this->create_subscription<geometry_msgs::msg::PoseStamped>(
+    goal_pose_sub = this->create_subscription<geometry_msgs::msg::PoseStamped>(
         "/goal_pose", 1, std::bind(&PurePursuitNode::ackerman_cb, this, _1));
-    odom_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
-        "/odom_can", 1, std::bind(&PurePursuitNode::odom_speed_cb, this, _1));
-    nav_ack_vel_pub_ = this->create_publisher<ackermann_msgs::msg::AckermannDrive>("/nav_ack_vel", 1);
-    path_vis_marker_pub_ = this->create_publisher<visualization_msgs::msg::Marker>("visualization_marker", 1);
+    odom_sub = this->create_subscription<nav_msgs::msg::Odometry>("/odom", 1,
+                                                                  std::bind(&PurePursuitNode::odom_speed_cb, this, _1));
+    nav_ack_vel_pub = this->create_publisher<ackermann_msgs::msg::AckermannDrive>("/nav_ack_vel", 1);
+    path_vis_marker_pub = this->create_publisher<visualization_msgs::msg::Marker>("visualization_marker", 1);
 
     // TF
-    tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
-    transform_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
+    tf_buffer = std::make_unique<tf2_ros::Buffer>(this->get_clock());
+    transform_listener = std::make_shared<tf2_ros::TransformListener>(*tf_buffer);
 
     // Initial var state
-    transform_tolerance_ = tf2::durationFromSec(0.1);
+    transform_tolerance = tf2::durationFromSec(0.1);
 }
 
 // base_link to odom
@@ -54,10 +54,10 @@ void PurePursuitNode::ackerman_cb(const geometry_msgs::msg::PoseStamped::SharedP
     msg_to_goal_pose.pose.pose.position.y = msg->pose.position.y;
     msg_to_goal_pose.pose.pose.position.z = msg->pose.position.z;
 
-    transformed_goal_pose = tf_buffer_->transform(msg_to_goal_pose, rear_axle_frame_, transform_tolerance_);
+    transformed_goal_pose = tf_buffer->transform(msg_to_goal_pose, rear_axle_frame, transform_tolerance);
 
     // Calc look ahead distance
-    look_ahead_distance_ = std::clamp(k_dd_ * current_speed_, min_look_ahead_distance_, max_look_ahead_distance_);
+    look_ahead_distance = std::clamp(k_dd * current_speed, min_look_ahead_distance, max_look_ahead_distance);
 
     RCLCPP_INFO(this->get_logger(), "Goal pose x: '%f'", transformed_goal_pose.pose.pose.position.x);
     RCLCPP_INFO(this->get_logger(), "Goal pose y: '%f'", transformed_goal_pose.pose.pose.position.y);
@@ -70,10 +70,10 @@ void PurePursuitNode::ackerman_cb(const geometry_msgs::msg::PoseStamped::SharedP
     float steering_angle_;
 
     // Calculate the angle between the robot and the goal
-    alpha_ = std::atan2(transformed_goal_pose.pose.pose.position.y, transformed_goal_pose.pose.pose.position.x);
+    alpha = std::atan2(transformed_goal_pose.pose.pose.position.y, transformed_goal_pose.pose.pose.position.x);
 
     // Calculate the steering angle (needs wheel base) TODO
-    steering_angle_ = std::atan(2.0 * 1.08 * std::sin(alpha_) / look_ahead_distance_);
+    steering_angle_ = std::atan(2.0 * 1.08 * std::sin(alpha) / look_ahead_distance);
 
     // Create the ackermann message
     ackermann_msgs::msg::AckermannDrive ack_msg;
@@ -82,13 +82,13 @@ void PurePursuitNode::ackerman_cb(const geometry_msgs::msg::PoseStamped::SharedP
     auto theta = steering_angle_;
     double radius = 1.08 / std::tan(theta);
 
-    set_speed_ = std::sqrt(9.81 * std::abs(radius));
-    ack_msg.speed = set_speed_;
+    set_speed = std::sqrt(9.81 * std::abs(radius));
+    ack_msg.speed = set_speed;
 
     // Publish the message
-    nav_ack_vel_pub_->publish(ack_msg);
+    nav_ack_vel_pub->publish(ack_msg);
 
-    auto y1 = 2 * alpha_;
+    auto y1 = 2 * alpha;
 
     geometry_msgs::msg::Point graphPoint;
 
@@ -119,7 +119,7 @@ void PurePursuitNode::ackerman_cb(const geometry_msgs::msg::PoseStamped::SharedP
 
     if (theta < 0) {
         for (double index = 0;
-             distance(graphPoint, transformed_robot_pose.pose.pose.position) - look_ahead_distance_ <= 0;
+             distance(graphPoint, transformed_robot_pose.pose.pose.position) - look_ahead_distance <= 0;
              index += 0.01) {
             graphPoint.x = radius * -std::sin(index);
             graphPoint.y = radius * -std::cos(index) + radius;
@@ -130,7 +130,7 @@ void PurePursuitNode::ackerman_cb(const geometry_msgs::msg::PoseStamped::SharedP
         }
     } else {
         for (double index = -3.14 / 2;
-             distance(graphPoint, transformed_robot_pose.pose.pose.position) - look_ahead_distance_ <= 0;
+             distance(graphPoint, transformed_robot_pose.pose.pose.position) - look_ahead_distance <= 0;
              index += 0.01) {
             graphPoint.x = radius * std::cos(index);
             graphPoint.y = radius * std::sin(index) + radius;
@@ -142,21 +142,21 @@ void PurePursuitNode::ackerman_cb(const geometry_msgs::msg::PoseStamped::SharedP
     }
 
     for (double index = 0; index <= 2 * 3.14; index += 0.1) {
-        graphPoint.x = look_ahead_distance_ * std::cos(index);
-        graphPoint.y = look_ahead_distance_ * std::sin(index);
+        graphPoint.x = look_ahead_distance * std::cos(index);
+        graphPoint.y = look_ahead_distance * std::sin(index);
         // RCLCPP_INFO(this->get_logger(), "graph point x: '%f'", graphPoint.x);
         // RCLCPP_INFO(this->get_logger(), "graph point y: '%f'", graphPoint.y);
 
         ld.points.push_back(graphPoint);
     }
 
-    path_vis_marker_pub_->publish(marker);
-    path_vis_marker_pub_->publish(ld);
+    path_vis_marker_pub->publish(marker);
+    path_vis_marker_pub->publish(ld);
 
     marker.points.clear();
     ld.points.clear();
 }
 
 void PurePursuitNode::odom_speed_cb(const nav_msgs::msg::Odometry::SharedPtr msg) {
-    current_speed_ = msg->twist.twist.linear.x;
+    current_speed = msg->twist.twist.linear.x;
 }
