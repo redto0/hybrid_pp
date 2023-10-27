@@ -4,6 +4,7 @@
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
 
+#include <cmath>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
 #include "ackermann_msgs/msg/ackermann_drive.hpp"
@@ -16,48 +17,69 @@
 class PurePursuitNode : public rclcpp::Node {
 private:
     // Var
-    
-    /// raduis for path point intersection
+
+    /// Position used for plotting the visualization markers
+    geometry_msgs::msg::PoseWithCovarianceStamped graph_point;
+
+    /// Varibale to convert target pose message to a PoseWithCovarianceStamped
+    geometry_msgs::msg::PoseWithCovarianceStamped msg_to_goal_pose;
+
+    /// Used for the transformation of the goal pose from /odom frame to /rear_axle frame
+    geometry_msgs::msg::PoseWithCovarianceStamped transformed_goal_pose;
+
+    /// Visualization marker for the predicted path arc
+    visualization_msgs::msg::Marker path_prediction_marker;
+
+    /// Visualization marker for the raduis of the lookahead distance
+    visualization_msgs::msg::Marker look_ahead_distance_marker;
+
+    /// The steering angle that will be output after pure pursuit claculations.
+    float steering_angle;
+
+    /// Raduis for path point intersection.
     float look_ahead_distance;
 
-    /// target x and y for goal pose
+    /// Target x and y for goal pose.
     float target_point_x_, target_point_y;
 
-    /// pure persuit alpha (look it up, kinda weird)
+    /// Pure pursuit alpha (look it up, kinda weird).
     float alpha;
 
-    /// current speed from odom
+    /// Current speed from odom.
     float current_speed;
 
-    /// the speed to be set based off the eq v = sqrt(static_friction * gravity * turn_radius)
+    /// The speed to be set based off the eq v = sqrt(static_friction * gravity * turn_radius).
     float set_speed;
 
     // Parameters
     tf2::Duration transform_tolerance;
     float min_look_ahead_distance;
     float max_look_ahead_distance;
-
-    /// constant to multiply by speed for look ahead distance calculation
-    float k_dd;
-
+    float wheel_base;
+    float gravity_constant;
     std::string rear_axle_frame;
+
+    /// Constant to multiply by speed for look ahead distance calculation.
+    float k_dd;
 
     // TF
     std::shared_ptr<tf2_ros::TransformListener> transform_listener;
     std::unique_ptr<tf2_ros::Buffer> tf_buffer;
 
-    // Pub Sub
+    // Pub/Sub
     rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr goal_pose_sub;
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub;
     rclcpp::Publisher<ackermann_msgs::msg::AckermannDrive>::SharedPtr nav_ack_vel_pub;
     rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr path_vis_marker_pub;
 
+    float distance_from_rear_axle(const geometry_msgs::msg::PoseWithCovarianceStamped& p1);
+
 public:
     PurePursuitNode(const rclcpp::NodeOptions& options);
+    // Subscriber callback
 
-    // subscriber callback
-    /// callback for sending ackerman data after calculating ackerman angle
+    /// Callback for sending ackerman data after calculating ackerman angle.
     void ackerman_cb(geometry_msgs::msg::PoseStamped::SharedPtr msg);
-    /// callback for getting current speed from odom
+    /// Callback for getting current speed from odom.
     void odom_speed_cb(nav_msgs::msg::Odometry::SharedPtr msg);
 };
