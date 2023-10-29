@@ -21,9 +21,6 @@ private:
     /// The ackerman message to be published to the /nav_ack_vel topic with steering angle and speed
     ackermann_msgs::msg::AckermannDrive ack_msg;
 
-    /// Position used for plotting the visualization markers
-    geometry_msgs::msg::Point graph_point;
-
     /// Varibale to convert target pose message to a PoseWithCovarianceStamped
     geometry_msgs::msg::PoseWithCovarianceStamped msg_to_goal_pose;
 
