@@ -6,11 +6,14 @@ using namespace std::placeholders;
 // For 1000ms
 using namespace std::chrono_literals;
 
-PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions& options) : Node("PurePursuitNode", options) {
+PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions& options)
+    : Node("PurePursuitNode", options), rate(this->declare_parameter<float>("frequency", 20)) {
     // Params
-    min_look_ahead_distance = this->declare_parameter<float>("min_look_ahead_distance", 3.0);
+    min_look_ahead_distance = this->declare_parameter<float>("min_look_ahead_distance",
+                                                             3.85);  // This is set to the min turning radius of phnx
     max_look_ahead_distance = this->declare_parameter<float>("max_look_ahead_distance", 10.0);
     k_dd = this->declare_parameter<float>("k_dd", 0.7);
+    max_speed = this->declare_parameter<float>("max_speed", 6.7056);
     rear_axle_frame = this->declare_parameter<std::string>("rear_axle_frame", "rear_axle");
     wheel_base = this->declare_parameter<float>("wheel_base", 1.08);
     gravity_constant = this->declare_parameter<float>("gravity_constant", 9.81);
@@ -31,25 +34,63 @@ PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions& options) : Node("Pur
     tf_buffer = std::make_unique<tf2_ros::Buffer>(this->get_clock());
     transform_listener = std::make_shared<tf2_ros::TransformListener>(*tf_buffer);
 
-    // Initial var state
-    transform_tolerance = tf2::durationFromSec(0.1);
+    this->work_thread = std::thread{[this]() {
+        RCLCPP_INFO(this->get_logger(), "Beginning pure pursuit loop...");
+        while (this->rate.sleep()) {
+            // Break if node is dying
+            if (this->stop_token.load()) {
+                break;
+            }
+
+            // Wait until we have path
+            if (!this->path.has_value()) {
+                continue;
+            }
+
+            // TODO to make this work with paths, we first need to select a point on the path to use below
+            // We also need to add stopping behavior if there are no reachable points
+
+            //TODO remove when we use path, since PP algo removes need for this
+            // For now this considers the waypoint reached if its under our steering radius
+            {
+                auto trans = this->tf_buffer->lookupTransform(this->rear_axle_frame, (*this->path)->header.frame_id,
+                                                              tf2::TimePointZero);
+                geometry_msgs::msg::PoseStamped transformed_goal_pose{};
+                tf2::doTransform(**this->path, transformed_goal_pose, trans);
+
+                RCLCPP_INFO(this->get_logger(), "Distance to goal %f",
+                            distance_pose(transformed_goal_pose, geometry_msgs::msg::PoseStamped{}));
+
+                // Stop tracking if too close
+                if (distance_pose(transformed_goal_pose, geometry_msgs::msg::PoseStamped{}) < 3.85) {
+                    this->path = std::nullopt;
+                    this->publish_stop_command();
+                    continue;
+                }
+            }
+
+            // Calculate command to point on path
+            auto command = this->calculate_command_to_point(*this->path);
+
+            nav_ack_vel_pub->publish(command.command);
+
+            if (debug) {
+                publish_visualisation(command.look_ahead_distance, command.command.steering_angle,
+                                      command.turning_radius);
+            }
+        }
+    }};
 }
 
-void PurePursuitNode::ackerman_cb(const geometry_msgs::msg::PoseStamped::SharedPtr msg) {
-    auto command = this->calculate_command_to_point(msg);
-
-    nav_ack_vel_pub->publish(command.command);
-
-    if (debug) {
-        publish_visualisation(command.look_ahead_distance, command.command.steering_angle, command.turning_radius);
-    }
-}
+void PurePursuitNode::ackerman_cb(const geometry_msgs::msg::PoseStamped::SharedPtr msg) { this->path = msg; }
 
 CommandCalcResult PurePursuitNode::calculate_command_to_point(
     geometry_msgs::msg::PoseStamped::SharedPtr target_point) const {
     // Transform goal pose to rear_axle frame
-    auto transformed_goal_pose =
-        this->tf_buffer->transform(*target_point, this->rear_axle_frame, this->transform_tolerance);
+    auto trans =
+        this->tf_buffer->lookupTransform(this->rear_axle_frame, target_point->header.frame_id, tf2::TimePointZero);
+    geometry_msgs::msg::PoseStamped transformed_goal_pose{};
+    tf2::doTransform(*target_point, transformed_goal_pose, trans);
 
     // Calc look ahead distance
     float look_ahead_distance = std::clamp(k_dd * current_speed, min_look_ahead_distance, max_look_ahead_distance);
@@ -67,7 +108,7 @@ CommandCalcResult PurePursuitNode::calculate_command_to_point(
 
     // Set the speed based off the eq v = sqrt(static_friction * gravity * turn_radius) with static friction being 1.
     // This finds the fastest speed that can be taken without breaking friction and slipping.
-    float set_speed = 0.6 * std::sqrt(this->gravity_constant * std::abs(distance_to_icr));
+    float set_speed = std::clamp(std::sqrt(this->gravity_constant * std::abs(distance_to_icr)), 0.1f, this->max_speed);
     ack_msg.speed = set_speed;
 
     CommandCalcResult out{ack_msg, look_ahead_distance, distance_to_icr};
@@ -145,6 +186,5 @@ void PurePursuitNode::publish_visualisation(float look_ahead_distance, float ste
 }
 
 void PurePursuitNode::odom_speed_cb(const nav_msgs::msg::Odometry::SharedPtr msg) {
-    // Gets the current speed of the cart
     current_speed = msg->twist.twist.linear.x;
 }

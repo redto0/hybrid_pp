@@ -5,7 +5,9 @@
 #include <tf2_ros/transform_listener.h>
 
 #include <cmath>
+#include <mutex>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+#include <thread>
 
 #include "ackermann_msgs/msg/ackermann_drive.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
@@ -32,6 +34,7 @@ private:
     tf2::Duration transform_tolerance;
     float min_look_ahead_distance;
     float max_look_ahead_distance;
+    float max_speed;
     float wheel_base;
     float gravity_constant;
     std::string rear_axle_frame;
@@ -39,6 +42,16 @@ private:
     float k_dd;
     /// Publishes visualisations if true
     bool debug;
+
+    // Multithreading
+    /// Set to true to kill thread
+    std::atomic_bool stop_token{false};
+    /// Thread that performs the main loop
+    std::thread work_thread;
+    /// Current path to follow
+    std::optional<geometry_msgs::msg::PoseStamped::SharedPtr> path;  // TODO make path
+    /// Node frequency
+    rclcpp::WallRate rate;
 
     // TF
     std::shared_ptr<tf2_ros::TransformListener> transform_listener;
@@ -52,7 +65,19 @@ private:
 
     static float distance(const geometry_msgs::msg::Point& p1, const geometry_msgs::msg::Point& p2) {
         return std::sqrt(std::pow(p1.x - p2.x, 2) + std::pow(p1.y - p2.y, 2));
-    };
+    }
+
+    template <class PoseType>
+    static float distance_pose(const PoseType& p1, const PoseType& p2) {
+        return std::sqrt(std::pow(p1.pose.position.x - p2.pose.position.x, 2) +
+                         std::pow(p1.pose.position.y - p2.pose.position.y, 2));
+    }
+
+    /// Publishes a zero move command
+    void publish_stop_command() {
+        ackermann_msgs::msg::AckermannDrive zero{};
+        this->nav_ack_vel_pub->publish(zero);
+    }
 
 public:
     PurePursuitNode(const rclcpp::NodeOptions& options);
@@ -65,4 +90,6 @@ public:
     void publish_visualisation(float look_ahead_distance, float steering_angle, double distance_to_icr);
     /// Calculates the command to reach the given point.
     CommandCalcResult calculate_command_to_point(geometry_msgs::msg::PoseStamped::SharedPtr target_point) const;
+
+    ~PurePursuitNode() override { this->stop_token.store(true); }
 };
