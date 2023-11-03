@@ -16,7 +16,7 @@ will come into play with the use of the lidar and a TBD obstacle avoidance algor
 
 ### Subscribes
 - `/odom_can`: Odometry from the can bus, this is used to get the linear velocity to determine a look ahead distance.
-- `/camera/mid/rgb`: Camera data, to be synced with training data.
+- `/goal_pose`: A placeable point in rviz using the `2D Goal Pose` maker. This points is then tracked through the current implementation of the pure pursuit algorithm.
 
 
 ## Params
