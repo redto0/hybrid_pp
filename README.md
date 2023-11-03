@@ -45,3 +45,29 @@ PurePursuitNode_node: Source files for the ROS2 node object itself, and only its
 PurePursuitNode.cpp: Source for the main function of the node, and only the main function
 
 tests/unit.cpp: Example file for unit tests. This is linked to the node and ros, so both can be used
+
+# hybrid_pp
+From package '[hybrid_pp](https://github.com/ISC-Project-Phoenix/hybrid_pp)'
+# File
+`./src/hybrid_pp.cpp`
+
+## Summary 
+ Path tracking implementation of the pure pursuit algorithm used to command velocity and ackerman angle to navagate to calculated points along a selected path. The hybrid section 
+will come into play with the use of the lidar and a TBD obstacle avoidance algorithm.
+
+### Publishes
+- `/nav_ack_vel`:  The calculated ackerman angle and velocity to be set to phoenix.
+- `visualization_marker`: The look ahead distance and path arc prediction to be plotted on rviz for live visualization of the path predicitons.
+
+### Subscribes
+- `/odom_can`: Odometery from the can bus, this is used to get the linear velocity to determin a look ahead distance.
+- `/camera/mid/rgb`: Camera data, to be synced with training data.
+
+## Params
+- `min_look_ahead_distance`: The minimnum look ahead distance to intercet the path and obtain a path point that is kinematically possible for phoenix.
+- `max_look_ahead_distance`: The maximum look ahead distance distance to intercet the path and obtain a path point that is within the max range of the camera.
+- `k_dd`: A constant multiplier used to scale the speed in the calculation for look ahead distance.
+- `max_speed`:  Max possible speed of phoenix in meters per second.
+- `wheel_base`: The wheel base of phoenix in meters.
+- `gravity_constant`: The constant acceleration due to gravity.
+- `debug`: Debug flag to determin if we want to publish the visualization markers. 
