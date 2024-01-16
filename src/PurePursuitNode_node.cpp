@@ -18,6 +18,7 @@ PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions& options)
     wheel_base = this->declare_parameter<float>("wheel_base", 1.08);
     gravity_constant = this->declare_parameter<float>("gravity_constant", 9.81);
     debug = this->declare_parameter<bool>("debug", true);
+    this->declare_parameter<bool>("stop_on_no_path", true);
 
     // Var init
     current_speed = 1;
@@ -51,7 +52,7 @@ PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions& options)
             auto path_result = this->get_path_point();
 
             // If no way to follow path, just stop
-            if (!path_result.has_value()) {
+            if (!path_result.has_value() && this->get_parameter("stop_on_no_path").as_bool()) {
                 RCLCPP_INFO(this->get_logger(), "No intersection with path, stopping!");
                 this->publish_stop_command();
                 continue;
