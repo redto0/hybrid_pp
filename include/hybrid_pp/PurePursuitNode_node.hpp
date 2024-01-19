@@ -14,6 +14,7 @@
 #include "nav_msgs/msg/path.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "visualization_msgs/msg/marker.hpp"
+#include "concurrentqueue.h"
 
 /// Pure pursuit command result, with components
 struct CommandCalcResult {
@@ -30,6 +31,12 @@ struct PathCalcResult {
     geometry_msgs::msg::PoseStamped intersection_point{};
     /// Distance to the point on the path used
     float look_ahead_distance{};
+};
+
+struct VisualisationParams {
+    float look_ahead_distance{};
+    float steering_angle{};
+    float distance_to_icr{};
 };
 
 class PurePursuitNode : public rclcpp::Node {
@@ -52,6 +59,10 @@ private:
     /// Publishes visualisations if true
     bool debug;
 
+
+    VisualisationParams params;
+    moodycamel::ConcurrentQueue<VisualisationParams> q;
+
     // Multithreading
     /// Set to true to kill thread
     std::atomic_bool stop_token{false};
@@ -61,6 +72,9 @@ private:
     std::optional<nav_msgs::msg::Path::SharedPtr> path;
     /// Node frequency
     rclcpp::WallRate rate;
+
+    std::thread visualization_thread;
+    rclcpp::WallRate vis_rate;
 
     // TF
     std::shared_ptr<tf2_ros::TransformListener> transform_listener;

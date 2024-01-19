@@ -6,6 +6,14 @@ if (CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     add_compile_options(-Wall -Wextra -Wpedantic)
 endif ()
 
+# Fetch dependencies
+FetchContent_Declare(
+        concurrentqueue
+        GIT_REPOSITORY https://github.com/cameron314/concurrentqueue.git
+)
+
+FetchContent_MakeAvailable(concurrentqueue)
+
 # find dependencies
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)

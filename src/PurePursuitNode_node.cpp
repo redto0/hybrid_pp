@@ -7,7 +7,9 @@ using namespace std::placeholders;
 using namespace std::chrono_literals;
 
 PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions& options)
-    : Node("PurePursuitNode", options), rate(this->declare_parameter<float>("frequency", 20)) {
+    : Node("PurePursuitNode", options),
+      rate(this->declare_parameter<float>("frequency", 20)),
+      vis_rate(this->declare_parameter<float>("viz_frequency", 60)) {
     // Params
     min_look_ahead_distance = this->declare_parameter<float>("min_look_ahead_distance",
                                                              3.85);  // This is set to the min turning radius of phnx
@@ -19,6 +21,8 @@ PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions& options)
     gravity_constant = this->declare_parameter<float>("gravity_constant", 9.81);
     debug = this->declare_parameter<bool>("debug", true);
     this->declare_parameter<bool>("stop_on_no_path", true);
+
+    q.enqueue(params);
 
     // Var init
     current_speed = 1;
@@ -34,6 +38,22 @@ PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions& options)
     // TF
     tf_buffer = std::make_unique<tf2_ros::Buffer>(this->get_clock());
     transform_listener = std::make_shared<tf2_ros::TransformListener>(*tf_buffer);
+
+    this->visualization_thread = std::thread{[this]()} {
+        RCLCPP_INFO(this->get_logger(), "Beginning visualization thread....");
+        while (this->rate.sleep()) {
+            if (this->stop_token.load()) {
+                break;
+            }
+
+            if(!q.try_dequeue(params)) {
+                continue;
+            }
+
+            
+
+        }
+    }
 
     this->work_thread = std::thread{[this]() {
         RCLCPP_INFO(this->get_logger(), "Beginning pure pursuit loop...");
