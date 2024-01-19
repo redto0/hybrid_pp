@@ -9,12 +9,12 @@
 #include <thread>
 
 #include "ackermann_msgs/msg/ackermann_drive.hpp"
+#include "concurrentqueue.h"
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "nav_msgs/msg/odometry.hpp"
 #include "nav_msgs/msg/path.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "visualization_msgs/msg/marker.hpp"
-#include "concurrentqueue.h"
 
 /// Pure pursuit command result, with components
 struct CommandCalcResult {
@@ -31,12 +31,6 @@ struct PathCalcResult {
     geometry_msgs::msg::PoseStamped intersection_point{};
     /// Distance to the point on the path used
     float look_ahead_distance{};
-};
-
-struct VisualisationParams {
-    float look_ahead_distance{};
-    float steering_angle{};
-    float distance_to_icr{};
 };
 
 class PurePursuitNode : public rclcpp::Node {
@@ -59,9 +53,8 @@ private:
     /// Publishes visualisations if true
     bool debug;
 
-
-    VisualisationParams params;
-    moodycamel::ConcurrentQueue<VisualisationParams> q;
+    CommandCalcResult command;
+    moodycamel::ConcurrentQueue<CommandCalcResult> q;
 
     // Multithreading
     /// Set to true to kill thread
@@ -106,7 +99,7 @@ public:
     /// Callback for getting current speed from odom.
     void odom_speed_cb(nav_msgs::msg::Odometry::SharedPtr msg);
     /// Publishes markers visualising the pure pursuit geometry.
-    void publish_visualisation(float look_ahead_distance, float steering_angle, double distance_to_icr);
+    void publish_visualisation(CommandCalcResult);
     /// Calculates the command to reach the given point.
     CommandCalcResult calculate_command_to_point(const geometry_msgs::msg::PoseStamped& target_point,
                                                  float look_ahead_distance) const;

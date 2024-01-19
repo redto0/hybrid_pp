@@ -22,7 +22,7 @@ PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions& options)
     debug = this->declare_parameter<bool>("debug", true);
     this->declare_parameter<bool>("stop_on_no_path", true);
 
-    q.enqueue(params);
+    q.enqueue(command);
 
     // Var init
     current_speed = 1;
@@ -39,20 +39,21 @@ PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions& options)
     tf_buffer = std::make_unique<tf2_ros::Buffer>(this->get_clock());
     transform_listener = std::make_shared<tf2_ros::TransformListener>(*tf_buffer);
 
-    this->visualization_thread = std::thread{[this]()} {
-        RCLCPP_INFO(this->get_logger(), "Beginning visualization thread....");
-        while (this->rate.sleep()) {
-            if (this->stop_token.load()) {
-                break;
+    if (debug) {
+        this->visualization_thread = std::thread{[this]() {
+            RCLCPP_INFO(this->get_logger(), "Beginning visualization thread....");
+            while (this->rate.sleep()) {
+                if (this->stop_token.load()) {
+                    break;
+                }
+
+                if (!q.try_dequeue(command)) {
+                    continue;
+                }
+
+                publish_visualisation(command); 
             }
-
-            if(!q.try_dequeue(params)) {
-                continue;
-            }
-
-            
-
-        }
+        }};
     }
 
     this->work_thread = std::thread{[this]() {
@@ -83,11 +84,6 @@ PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions& options)
                 this->calculate_command_to_point((*path_result).intersection_point, (*path_result).look_ahead_distance);
 
             nav_ack_vel_pub->publish(command.command);
-
-            if (debug) {
-                publish_visualisation(command.look_ahead_distance, command.command.steering_angle,
-                                      command.turning_radius);
-            }
         }
     }};
 }
@@ -116,14 +112,15 @@ CommandCalcResult PurePursuitNode::calculate_command_to_point(const geometry_msg
 
     // Set the speed based off the eq v = sqrt(static_friction * gravity * turn_radius) with static friction being 1.
     // This finds the fastest speed that can be taken without breaking friction and slipping.
-    float set_speed = std::clamp(std::sqrt(this->gravity_constant * std::abs(distance_to_icr) * 0.6f), 0.1f, this->max_speed);
+    float set_speed =
+        std::clamp(std::sqrt(this->gravity_constant * std::abs(distance_to_icr) * 0.6f), 0.1f, this->max_speed);
     ack_msg.speed = set_speed;
 
     CommandCalcResult out{ack_msg, look_ahead_distance, distance_to_icr};
     return out;
 }
 
-void PurePursuitNode::publish_visualisation(float look_ahead_distance, float steering_angle, double distance_to_icr) {
+void PurePursuitNode::publish_visualisation(CommandCalcResult command) {
     visualization_msgs::msg::Marker path_prediction_marker{};
     // Declares the path prediction marker in the rear axle frame
     path_prediction_marker.header.frame_id = rear_axle_frame;
@@ -155,22 +152,23 @@ void PurePursuitNode::publish_visualisation(float look_ahead_distance, float ste
     geometry_msgs::msg::Point look_ahead_graph_point;
 
     // If our steering angle is negative, graphing math is a little different
-    if (steering_angle < 0) {
+    if (command.turning_radius < 0) {
         // Loop runs until the point generated hits the look ahead distance raduis
-        for (double index = 0; distance(path_graph_point, zero) - look_ahead_distance <= 0; index += 0.001) {
+        for (double index = 0; distance(path_graph_point, zero) - command.look_ahead_distance <= 0; index += 0.001) {
             // Sets the x and y coords using polar coodiants the the ICR as the origin
-            path_graph_point.x = distance_to_icr * -sin(index);
-            path_graph_point.y = distance_to_icr * -cos(index) + distance_to_icr;
+            path_graph_point.x = command.turning_radius * -sin(index);
+            path_graph_point.y = command.turning_radius * -cos(index) + command.turning_radius;
 
             // Appends the generated point to the markers list of points
             path_prediction_marker.points.push_back(path_graph_point);
         }
     } else {
         // Loop runs until the point generated hits the look ahead distance raduis
-        for (double index = -3.14 / 2; distance(path_graph_point, zero) - look_ahead_distance <= 0; index += 0.001) {
+        for (double index = -3.14 / 2; distance(path_graph_point, zero) - command.look_ahead_distance <= 0;
+             index += 0.001) {
             // Sets the x and y coords using ploar coodiants the the ICR as the origin
-            path_graph_point.x = distance_to_icr * cos(index);
-            path_graph_point.y = distance_to_icr * sin(index) + distance_to_icr;
+            path_graph_point.x = command.turning_radius * cos(index);
+            path_graph_point.y = command.turning_radius * sin(index) + command.turning_radius;
 
             // Appends the generated point to the markers list of points
             path_prediction_marker.points.push_back(path_graph_point);
@@ -179,8 +177,8 @@ void PurePursuitNode::publish_visualisation(float look_ahead_distance, float ste
 
     // Appends a list of points in a circle to the look ahead distance marker using look ahead distance as radius
     for (double index = 0; index <= 2 * 3.14; index += 0.01) {
-        look_ahead_graph_point.x = look_ahead_distance * cos(index);
-        look_ahead_graph_point.y = look_ahead_distance * sin(index);
+        look_ahead_graph_point.x = command.look_ahead_distance * cos(index);
+        look_ahead_graph_point.y = command.look_ahead_distance * sin(index);
 
         look_ahead_distance_marker.points.push_back(look_ahead_graph_point);
     }

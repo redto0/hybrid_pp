@@ -10,8 +10,10 @@ endif ()
 FetchContent_Declare(
         concurrentqueue
         GIT_REPOSITORY https://github.com/cameron314/concurrentqueue.git
+        GIT_TAG v1.0.4
 )
-
+FetchContent_GetProperties(concurrentqueue)
+        
 FetchContent_MakeAvailable(concurrentqueue)
 
 # find dependencies
@@ -25,6 +27,7 @@ find_package(sensor_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(visualization_msgs REQUIRED)
+find_package(concurrentqueue REQUIRED) 
 
 # Add source for node executable (link non-ros dependencies here)
 add_executable(hybrid_pp src/PurePursuitNode.cpp src/PurePursuitNode_node.cpp)
@@ -32,6 +35,7 @@ target_include_directories(hybrid_pp PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>)
 target_compile_features(hybrid_pp PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
+target_link_libraries(hybrid_pp concurrentqueue::concurrentqueue)
 
 # Make ros deps a variable so they get linked to tests as well
 set(dependencies
@@ -78,6 +82,7 @@ if (BUILD_TESTING)
     target_include_directories(${PROJECT_NAME}-test PUBLIC
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
             $<INSTALL_INTERFACE:include>)
+        target_link_libraries(${PROJECT_NAME} concurrentqueue)
 endif ()
 
 ament_package()
