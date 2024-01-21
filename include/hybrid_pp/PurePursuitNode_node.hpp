@@ -9,7 +9,7 @@
 #include <thread>
 
 #include "ackermann_msgs/msg/ackermann_drive.hpp"
-#include "concurrentqueue.h"
+#include "vendor_deps/concurrentqueue.h"
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "nav_msgs/msg/odometry.hpp"
 #include "nav_msgs/msg/path.hpp"
@@ -53,8 +53,8 @@ private:
     /// Publishes visualisations if true
     bool debug;
 
-    CommandCalcResult command;
-    moodycamel::ConcurrentQueue<CommandCalcResult> q;
+    std::optional<CommandCalcResult> command;
+    std::mutex command_mutex;
 
     // Multithreading
     /// Set to true to kill thread

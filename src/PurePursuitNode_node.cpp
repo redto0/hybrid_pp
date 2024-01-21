@@ -22,8 +22,6 @@ PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions& options)
     debug = this->declare_parameter<bool>("debug", true);
     this->declare_parameter<bool>("stop_on_no_path", true);
 
-    q.enqueue(command);
-
     // Var init
     current_speed = 1;
 
@@ -47,11 +45,11 @@ PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions& options)
                     break;
                 }
 
-                if (!q.try_dequeue(command)) {
+                if (!command.has_value()) {
                     continue;
                 }
 
-                publish_visualisation(command); 
+                publish_visualisation(command.value());
             }
         }};
     }
@@ -79,11 +77,13 @@ PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions& options)
                 continue;
             }
 
+            command_mutex.lock();
             // Calculate command to point on path
-            auto command =
+            command =
                 this->calculate_command_to_point((*path_result).intersection_point, (*path_result).look_ahead_distance);
+            command_mutex.unlock();
 
-            nav_ack_vel_pub->publish(command.command);
+            nav_ack_vel_pub->publish(command.value().command);
         }
     }};
 }
