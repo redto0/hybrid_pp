@@ -29,7 +29,12 @@ PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions& options)
     odom_sub = this->create_subscription<nav_msgs::msg::Odometry>("/odom", 5,
                                                                   std::bind(&PurePursuitNode::odom_speed_cb, this, _1));
     nav_ack_vel_pub = this->create_publisher<ackermann_msgs::msg::AckermannDrive>("/nav_ack_vel", 5);
-    path_vis_marker_pub = this->create_publisher<visualization_msgs::msg::Marker>("visualization_marker", 1);
+
+    // Visualization marker publishers
+    travel_path_pub = this->create_publisher<visualization_msgs::msg::Marker>("/travel_path_marker", 1);
+    look_ahead_vis_marker_pub = this->create_publisher<visualization_msgs::msg::Marker>("/look_ahead_marker", 1);
+    intersection_point_pub = this->create_publisher<visualization_msgs::msg::Marker>("/intersection_marker", 1);
+    planner_path_pub = this->create_publisher<visualization_msgs::msg::Marker>("/planner_path_marker", 1);
 
     // TF
     tf_buffer = std::make_unique<tf2_ros::Buffer>(this->get_clock());
@@ -62,12 +67,11 @@ PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions& options)
             auto command =
                 this->calculate_command_to_point((*path_result).intersection_point, (*path_result).look_ahead_distance);
 
-            nav_ack_vel_pub->publish(command.command);
-
             if (debug) {
-                publish_visualisation(command.look_ahead_distance, command.command.steering_angle,
-                                      command.turning_radius);
+                publish_visualisation(command);
             }
+
+            nav_ack_vel_pub->publish(command.command);
         }
     }};
 }
@@ -96,14 +100,15 @@ CommandCalcResult PurePursuitNode::calculate_command_to_point(const geometry_msg
 
     // Set the speed based off the eq v = sqrt(static_friction * gravity * turn_radius) with static friction being 1.
     // This finds the fastest speed that can be taken without breaking friction and slipping.
-    float set_speed = std::clamp(std::sqrt(this->gravity_constant * std::abs(distance_to_icr) * 0.6f), 0.1f, this->max_speed);
+    float set_speed =
+        std::clamp(std::sqrt(this->gravity_constant * std::abs(distance_to_icr) * 0.6f), 0.1f, this->max_speed);
     ack_msg.speed = set_speed;
 
     CommandCalcResult out{ack_msg, look_ahead_distance, distance_to_icr};
     return out;
 }
 
-void PurePursuitNode::publish_visualisation(float look_ahead_distance, float steering_angle, double distance_to_icr) {
+void PurePursuitNode::publish_visualisation(CommandCalcResult command) {
     visualization_msgs::msg::Marker path_prediction_marker{};
     // Declares the path prediction marker in the rear axle frame
     path_prediction_marker.header.frame_id = rear_axle_frame;
@@ -135,22 +140,23 @@ void PurePursuitNode::publish_visualisation(float look_ahead_distance, float ste
     geometry_msgs::msg::Point look_ahead_graph_point;
 
     // If our steering angle is negative, graphing math is a little different
-    if (steering_angle < 0) {
+    if (command.turning_radius < 0) {
         // Loop runs until the point generated hits the look ahead distance raduis
-        for (double index = 0; distance(path_graph_point, zero) - look_ahead_distance <= 0; index += 0.001) {
+        for (double index = 0; distance(path_graph_point, zero) - command.look_ahead_distance <= 0; index += 0.001) {
             // Sets the x and y coords using polar coodiants the the ICR as the origin
-            path_graph_point.x = distance_to_icr * -sin(index);
-            path_graph_point.y = distance_to_icr * -cos(index) + distance_to_icr;
+            path_graph_point.x = command.turning_radius * -sin(index);
+            path_graph_point.y = command.turning_radius * -cos(index) + command.turning_radius;
 
             // Appends the generated point to the markers list of points
             path_prediction_marker.points.push_back(path_graph_point);
         }
     } else {
         // Loop runs until the point generated hits the look ahead distance raduis
-        for (double index = -3.14 / 2; distance(path_graph_point, zero) - look_ahead_distance <= 0; index += 0.001) {
+        for (double index = -3.14 / 2; distance(path_graph_point, zero) - command.look_ahead_distance <= 0;
+             index += 0.001) {
             // Sets the x and y coords using ploar coodiants the the ICR as the origin
-            path_graph_point.x = distance_to_icr * cos(index);
-            path_graph_point.y = distance_to_icr * sin(index) + distance_to_icr;
+            path_graph_point.x = command.turning_radius * cos(index);
+            path_graph_point.y = command.turning_radius * sin(index) + command.turning_radius;
 
             // Appends the generated point to the markers list of points
             path_prediction_marker.points.push_back(path_graph_point);
@@ -159,15 +165,15 @@ void PurePursuitNode::publish_visualisation(float look_ahead_distance, float ste
 
     // Appends a list of points in a circle to the look ahead distance marker using look ahead distance as radius
     for (double index = 0; index <= 2 * 3.14; index += 0.01) {
-        look_ahead_graph_point.x = look_ahead_distance * cos(index);
-        look_ahead_graph_point.y = look_ahead_distance * sin(index);
+        look_ahead_graph_point.x = command.look_ahead_distance * cos(index);
+        look_ahead_graph_point.y = command.look_ahead_distance * sin(index);
 
         look_ahead_distance_marker.points.push_back(look_ahead_graph_point);
     }
 
-    // Publish the markers to the visualization_marker topic
-    path_vis_marker_pub->publish(path_prediction_marker);
-    path_vis_marker_pub->publish(look_ahead_distance_marker);
+    // Publish the markers to their respective visualization topics
+    travel_path_pub->publish(path_prediction_marker);
+    look_ahead_vis_marker_pub->publish(look_ahead_distance_marker);
 }
 
 void PurePursuitNode::odom_speed_cb(const nav_msgs::msg::Odometry::SharedPtr msg) {
@@ -260,8 +266,8 @@ std::optional<PathCalcResult> PurePursuitNode::get_path_point() {
         target_marker.color.r = 0.6;
         target_marker.color.b = 0.4;
 
-        path_vis_marker_pub->publish(spline_marker);
-        path_vis_marker_pub->publish(target_marker);
+        planner_path_pub->publish(spline_marker);
+        intersection_point_pub->publish(target_marker);
     }
 
     PathCalcResult out{};

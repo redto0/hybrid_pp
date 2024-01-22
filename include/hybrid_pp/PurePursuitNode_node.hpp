@@ -70,7 +70,12 @@ private:
     rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr path_sub;
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub;
     rclcpp::Publisher<ackermann_msgs::msg::AckermannDrive>::SharedPtr nav_ack_vel_pub;
-    rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr path_vis_marker_pub;
+
+    // Visualization publishers
+    rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr travel_path_pub;
+    rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr look_ahead_vis_marker_pub;
+    rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr intersection_point_pub;
+    rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr planner_path_pub;
 
     static float distance(const geometry_msgs::msg::Point& p1, const geometry_msgs::msg::Point& p2) {
         return std::hypot((float)p1.x - (float)p2.x, (float)p1.y - (float)p2.y);
@@ -92,7 +97,7 @@ public:
     /// Callback for getting current speed from odom.
     void odom_speed_cb(nav_msgs::msg::Odometry::SharedPtr msg);
     /// Publishes markers visualising the pure pursuit geometry.
-    void publish_visualisation(float look_ahead_distance, float steering_angle, double distance_to_icr);
+    void publish_visualisation(CommandCalcResult);
     /// Calculates the command to reach the given point.
     CommandCalcResult calculate_command_to_point(const geometry_msgs::msg::PoseStamped& target_point,
                                                  float look_ahead_distance) const;
