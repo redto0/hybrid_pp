@@ -29,8 +29,12 @@ PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions& options)
     odom_sub = this->create_subscription<nav_msgs::msg::Odometry>("/odom", 5,
                                                                   std::bind(&PurePursuitNode::odom_speed_cb, this, _1));
     nav_ack_vel_pub = this->create_publisher<ackermann_msgs::msg::AckermannDrive>("/nav_ack_vel", 5);
-    path_vis_marker_pub = this->create_publisher<visualization_msgs::msg::Marker>("/path_marker", 1);
+
+    // Visualization marker publishers
+    travel_path_pub = this->create_publisher<visualization_msgs::msg::Marker>("/travel_path_marker", 1);
     look_ahead_vis_marker_pub = this->create_publisher<visualization_msgs::msg::Marker>("/look_ahead_marker", 1);
+    intersection_point_pub = this->create_publisher<visualization_msgs::msg::Marker>("/intersection_marker", 1);
+    planner_path_pub = this->create_publisher<visualization_msgs::msg::Marker>("/planner_path_marker", 1);
 
     // TF
     tf_buffer = std::make_unique<tf2_ros::Buffer>(this->get_clock());
@@ -167,8 +171,8 @@ void PurePursuitNode::publish_visualisation(CommandCalcResult command) {
         look_ahead_distance_marker.points.push_back(look_ahead_graph_point);
     }
 
-    // Publish the markers to the visualization_marker topic
-    path_vis_marker_pub->publish(path_prediction_marker);
+    // Publish the markers to their respective visualization topics
+    travel_path_pub->publish(path_prediction_marker);
     look_ahead_vis_marker_pub->publish(look_ahead_distance_marker);
 }
 
@@ -262,8 +266,8 @@ std::optional<PathCalcResult> PurePursuitNode::get_path_point() {
         target_marker.color.r = 0.6;
         target_marker.color.b = 0.4;
 
-        path_vis_marker_pub->publish(spline_marker);
-        path_vis_marker_pub->publish(target_marker);
+        planner_path_pub->publish(spline_marker);
+        intersection_point_pub->publish(target_marker);
     }
 
     PathCalcResult out{};
