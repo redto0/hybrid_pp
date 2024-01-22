@@ -9,11 +9,11 @@
 #include <thread>
 
 #include "ackermann_msgs/msg/ackermann_drive.hpp"
-#include "vendor_deps/concurrentqueue.h"
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "nav_msgs/msg/odometry.hpp"
 #include "nav_msgs/msg/path.hpp"
 #include "rclcpp/rclcpp.hpp"
+#include "vendor_deps/concurrentqueue.h"
 #include "visualization_msgs/msg/marker.hpp"
 
 /// Pure pursuit command result, with components
@@ -53,9 +53,6 @@ private:
     /// Publishes visualisations if true
     bool debug;
 
-    std::optional<CommandCalcResult> command;
-    std::mutex command_mutex;
-
     // Multithreading
     /// Set to true to kill thread
     std::atomic_bool stop_token{false};
@@ -66,9 +63,6 @@ private:
     /// Node frequency
     rclcpp::WallRate rate;
 
-    std::thread visualization_thread;
-    rclcpp::WallRate vis_rate;
-
     // TF
     std::shared_ptr<tf2_ros::TransformListener> transform_listener;
     std::unique_ptr<tf2_ros::Buffer> tf_buffer;
@@ -78,6 +72,7 @@ private:
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub;
     rclcpp::Publisher<ackermann_msgs::msg::AckermannDrive>::SharedPtr nav_ack_vel_pub;
     rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr path_vis_marker_pub;
+    rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr look_ahead_vis_marker_pub;
 
     static float distance(const geometry_msgs::msg::Point& p1, const geometry_msgs::msg::Point& p2) {
         return std::hypot((float)p1.x - (float)p2.x, (float)p1.y - (float)p2.y);

@@ -7,9 +7,7 @@ using namespace std::placeholders;
 using namespace std::chrono_literals;
 
 PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions& options)
-    : Node("PurePursuitNode", options),
-      rate(this->declare_parameter<float>("frequency", 20)),
-      vis_rate(this->declare_parameter<float>("viz_frequency", 60)) {
+    : Node("PurePursuitNode", options), rate(this->declare_parameter<float>("frequency", 20)) {
     // Params
     min_look_ahead_distance = this->declare_parameter<float>("min_look_ahead_distance",
                                                              3.85);  // This is set to the min turning radius of phnx
@@ -31,28 +29,12 @@ PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions& options)
     odom_sub = this->create_subscription<nav_msgs::msg::Odometry>("/odom", 5,
                                                                   std::bind(&PurePursuitNode::odom_speed_cb, this, _1));
     nav_ack_vel_pub = this->create_publisher<ackermann_msgs::msg::AckermannDrive>("/nav_ack_vel", 5);
-    path_vis_marker_pub = this->create_publisher<visualization_msgs::msg::Marker>("visualization_marker", 1);
+    path_vis_marker_pub = this->create_publisher<visualization_msgs::msg::Marker>("/path_marker", 1);
+    look_ahead_vis_marker_pub = this->create_publisher<visualization_msgs::msg::Marker>("/look_ahead_marker", 1);
 
     // TF
     tf_buffer = std::make_unique<tf2_ros::Buffer>(this->get_clock());
     transform_listener = std::make_shared<tf2_ros::TransformListener>(*tf_buffer);
-
-    if (debug) {
-        this->visualization_thread = std::thread{[this]() {
-            RCLCPP_INFO(this->get_logger(), "Beginning visualization thread....");
-            while (this->rate.sleep()) {
-                if (this->stop_token.load()) {
-                    break;
-                }
-
-                if (!command.has_value()) {
-                    continue;
-                }
-
-                publish_visualisation(command.value());
-            }
-        }};
-    }
 
     this->work_thread = std::thread{[this]() {
         RCLCPP_INFO(this->get_logger(), "Beginning pure pursuit loop...");
@@ -77,13 +59,15 @@ PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions& options)
                 continue;
             }
 
-            command_mutex.lock();
             // Calculate command to point on path
-            command =
+            auto command =
                 this->calculate_command_to_point((*path_result).intersection_point, (*path_result).look_ahead_distance);
-            command_mutex.unlock();
 
-            nav_ack_vel_pub->publish(command.value().command);
+            if (debug) {
+                publish_visualisation(command);
+            }
+
+            nav_ack_vel_pub->publish(command.command);
         }
     }};
 }
@@ -185,7 +169,7 @@ void PurePursuitNode::publish_visualisation(CommandCalcResult command) {
 
     // Publish the markers to the visualization_marker topic
     path_vis_marker_pub->publish(path_prediction_marker);
-    path_vis_marker_pub->publish(look_ahead_distance_marker);
+    look_ahead_vis_marker_pub->publish(look_ahead_distance_marker);
 }
 
 void PurePursuitNode::odom_speed_cb(const nav_msgs::msg::Odometry::SharedPtr msg) {
