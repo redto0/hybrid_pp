@@ -28,6 +28,8 @@ PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions& options)
         this->create_subscription<nav_msgs::msg::Path>("/path", 5, std::bind(&PurePursuitNode::path_cb, this, _1));
     odom_sub = this->create_subscription<nav_msgs::msg::Odometry>("/odom", 5,
                                                                   std::bind(&PurePursuitNode::odom_speed_cb, this, _1));
+    lidar_scan_sub = this->create_subscription<sensor_msgs::msg::LaserScan>(
+        "/scan", 5, std::bind(&PurePursuitNode::lidar_scan_cb, this, _1));
     nav_ack_vel_pub = this->create_publisher<ackermann_msgs::msg::AckermannDrive>("/nav_ack_vel", 5);
 
     // Visualization marker publishers
@@ -275,4 +277,15 @@ std::optional<PathCalcResult> PurePursuitNode::get_path_point() {
     out.look_ahead_distance = look_ahead_distance;
 
     return out;
+}
+
+void PurePursuitNode::lidar_scan_cb(const sensor_msgs::msg::LaserScan::SharedPtr msg) {
+    auto scan = msg.get();
+
+    std::vector<float> ranges = scan->ranges;
+
+    for (int i = 0; i < ranges.size(); i++) {
+    }
+
+    RCLCPP_INFO(this->get_logger(), "scan inc is: %f", scan->angle_increment);
 }

@@ -14,6 +14,7 @@
 #include "nav_msgs/msg/path.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "visualization_msgs/msg/marker.hpp"
+#include "sensor_msgs/msg/laser_scan.hpp"
 
 /// Pure pursuit command result, with components
 struct CommandCalcResult {
@@ -69,6 +70,7 @@ private:
     // Pub/Sub
     rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr path_sub;
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub;
+    rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr lidar_scan_sub;
     rclcpp::Publisher<ackermann_msgs::msg::AckermannDrive>::SharedPtr nav_ack_vel_pub;
 
     // Visualization publishers
@@ -96,6 +98,8 @@ public:
     void path_cb(nav_msgs::msg::Path::SharedPtr msg);
     /// Callback for getting current speed from odom.
     void odom_speed_cb(nav_msgs::msg::Odometry::SharedPtr msg);
+    /// Callback for getting getting and pre-prossesing LIDAR scans
+    void lidar_scan_cb(sensor_msgs::msg::LaserScan::SharedPtr msg);
     /// Publishes markers visualising the pure pursuit geometry.
     void publish_visualisation(CommandCalcResult);
     /// Calculates the command to reach the given point.
