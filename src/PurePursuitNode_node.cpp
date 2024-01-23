@@ -284,8 +284,9 @@ void PurePursuitNode::lidar_scan_cb(const sensor_msgs::msg::LaserScan::SharedPtr
 
     std::vector<float> ranges = scan->ranges;
 
+    float current_angle = 0;
     for (int i = 0; i < ranges.size(); i++) {
+        RCLCPP_INFO(this->get_logger(), "rage at angle: %f if: %f", current_angle, scan->ranges[i]);
+        current_angle += scan->angle_increment;
     }
-
-    RCLCPP_INFO(this->get_logger(), "scan inc is: %f", scan->angle_increment);
 }
