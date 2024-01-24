@@ -7,7 +7,7 @@ using namespace std::placeholders;
 using namespace std::chrono_literals;
 
 PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions& options)
-    : Node("PurePursuitNode", options), rate(this->declare_parameter<float>("frequency", 20)) {
+    : Node("PurePursuitNode", options), rate(this->declare_parameter<float>("frequency", 30)) {
     // Params
     min_look_ahead_distance = this->declare_parameter<float>("min_look_ahead_distance",
                                                              3.85);  // This is set to the min turning radius of phnx
@@ -44,7 +44,7 @@ PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions& options)
 
     this->work_thread = std::thread{[this]() {
         RCLCPP_INFO(this->get_logger(), "Beginning pure pursuit loop...");
-        while (this->rate.sleep()) {
+        while (true) {
             // Break if node is dying
             if (this->stop_token.load()) {
                 break;
@@ -59,9 +59,12 @@ PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions& options)
             auto path_result = this->get_path_point();
 
             // If no way to follow path, just stop
-            if (!path_result.has_value() && this->get_parameter("stop_on_no_path").as_bool()) {
-                RCLCPP_INFO(this->get_logger(), "No intersection with path, stopping!");
-                this->publish_stop_command();
+            if (!path_result.has_value()) {
+                if (this->get_parameter("stop_on_no_path").as_bool()) {
+                    RCLCPP_INFO(this->get_logger(), "No intersection with path, stopping!");
+                    this->publish_stop_command();
+                }
+
                 continue;
             }
 
@@ -74,6 +77,11 @@ PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions& options)
             }
 
             nav_ack_vel_pub->publish(command.command);
+
+            // Run at some rate
+            if (!this->rate.sleep()) {
+                RCLCPP_INFO_ONCE(this->get_logger(), "Unable to meet desired frequency! This will only print once.");
+            }
         }
     }};
 }
@@ -94,8 +102,8 @@ CommandCalcResult PurePursuitNode::calculate_command_to_point(const geometry_msg
 
     // Set the desired steering angle and set it to the ackerman message
     float steering_angle = atanf(2.0f * wheel_base * sinf(alpha) / look_ahead_distance);
-    ackermann_msgs::msg::AckermannDrive ack_msg;
-    ack_msg.steering_angle = steering_angle;
+    static ackermann_msgs::msg::AckermannDrive ack_msg{};
+    ack_msg.steering_angle = (steering_angle + ack_msg.steering_angle) / 2;
 
     // Gets the distance to the instantaneous center of rotation from the center of the rear axle (turning radius)
     float distance_to_icr = wheel_base / std::tan(steering_angle);
@@ -103,8 +111,8 @@ CommandCalcResult PurePursuitNode::calculate_command_to_point(const geometry_msg
     // Set the speed based off the eq v = sqrt(static_friction * gravity * turn_radius) with static friction being 1.
     // This finds the fastest speed that can be taken without breaking friction and slipping.
     float set_speed =
-        std::clamp(std::sqrt(this->gravity_constant * std::abs(distance_to_icr) * 0.6f), 0.1f, this->max_speed);
-    ack_msg.speed = set_speed;
+        std::clamp(std::sqrt(this->gravity_constant * std::abs(distance_to_icr) * 0.3f), 0.1f, this->max_speed);
+    ack_msg.speed = (set_speed + ack_msg.speed) / 2;
 
     CommandCalcResult out{ack_msg, look_ahead_distance, distance_to_icr};
     return out;
@@ -183,6 +191,11 @@ void PurePursuitNode::odom_speed_cb(const nav_msgs::msg::Odometry::SharedPtr msg
 }
 
 std::optional<PathCalcResult> PurePursuitNode::get_path_point() {
+    // For sanity
+    if (!this->path.has_value()) {
+        return std::nullopt;
+    }
+
     auto trans =
         this->tf_buffer->lookupTransform(this->rear_axle_frame, path.value()->header.frame_id, tf2::TimePointZero);
 
@@ -198,7 +211,7 @@ std::optional<PathCalcResult> PurePursuitNode::get_path_point() {
 
     // Spline connecting our path points
     std::vector<geometry_msgs::msg::Point> spline;
-    geometry_msgs::msg::PoseStamped intercepted_pose;
+    geometry_msgs::msg::PoseStamped intercepted_pose{};
 
     // Calc look ahead distance
     float look_ahead_distance = std::clamp(k_dd * current_speed, min_look_ahead_distance, max_look_ahead_distance);
@@ -240,7 +253,7 @@ std::optional<PathCalcResult> PurePursuitNode::get_path_point() {
     }
 
     if (debug) {
-        visualization_msgs::msg::Marker spline_marker;
+        visualization_msgs::msg::Marker spline_marker{};
         spline_marker.header.frame_id = this->rear_axle_frame;
         spline_marker.header.stamp = get_clock()->now();
         spline_marker.type = visualization_msgs::msg::Marker::LINE_STRIP;
