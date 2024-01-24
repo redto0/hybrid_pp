@@ -7,7 +7,7 @@ using namespace std::placeholders;
 using namespace std::chrono_literals;
 
 PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions& options)
-    : Node("PurePursuitNode", options), rate(this->declare_parameter<float>("frequency", 20)) {
+    : Node("PurePursuitNode", options), rate(this->declare_parameter<float>("frequency", 30)) {
     // Params
     min_look_ahead_distance = this->declare_parameter<float>("min_look_ahead_distance",
                                                              3.85);  // This is set to the min turning radius of phnx
@@ -42,7 +42,7 @@ PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions& options)
 
     this->work_thread = std::thread{[this]() {
         RCLCPP_INFO(this->get_logger(), "Beginning pure pursuit loop...");
-        while (this->rate.sleep()) {
+        while (true) {
             // Break if node is dying
             if (this->stop_token.load()) {
                 break;
@@ -75,6 +75,11 @@ PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions& options)
             }
 
             nav_ack_vel_pub->publish(command.command);
+
+            // Run at some rate
+            if (!this->rate.sleep()) {
+                RCLCPP_INFO_ONCE(this->get_logger(), "Unable to meet desired frequency! This will only print once.");
+            }
         }
     }};
 }
