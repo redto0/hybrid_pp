@@ -10,6 +10,7 @@
 
 #include "ackermann_msgs/msg/ackermann_drive.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
+#include "laser_geometry/laser_geometry/laser_geometry.hpp"
 #include "nav_msgs/msg/odometry.hpp"
 #include "nav_msgs/msg/path.hpp"
 #include "rclcpp/rclcpp.hpp"
@@ -78,6 +79,7 @@ private:
     rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr look_ahead_vis_marker_pub;
     rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr intersection_point_pub;
     rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr planner_path_pub;
+    rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr object_vis_pub;
 
     static float distance(const geometry_msgs::msg::Point& p1, const geometry_msgs::msg::Point& p2) {
         return std::hypot((float)p1.x - (float)p2.x, (float)p1.y - (float)p2.y);

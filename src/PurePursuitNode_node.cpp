@@ -37,6 +37,7 @@ PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions& options)
     look_ahead_vis_marker_pub = this->create_publisher<visualization_msgs::msg::Marker>("/look_ahead_marker", 1);
     intersection_point_pub = this->create_publisher<visualization_msgs::msg::Marker>("/intersection_marker", 1);
     planner_path_pub = this->create_publisher<visualization_msgs::msg::Marker>("/planner_path_marker", 1);
+    object_vis_pub = this->create_publisher<visualization_msgs::msg::Marker>("/box_vis_marker", 1);
 
     // TF
     tf_buffer = std::make_unique<tf2_ros::Buffer>(this->get_clock());
@@ -293,26 +294,23 @@ std::optional<PathCalcResult> PurePursuitNode::get_path_point() {
 }
 
 void PurePursuitNode::lidar_scan_cb(const sensor_msgs::msg::LaserScan::SharedPtr msg) {
-    auto scan = msg.get();
+    laser_geometry::LaserProjection projection;
+    sensor_msgs::msg::PointCloud2 points;
 
-    std::vector<float> ranges = scan->ranges;
-    int consecutive_count = 0;
-    int longest_count = 0;
-    float start_range, end_range = 0;
+    projection.projectLaser(msg, &points);
 
-    for (int i = 0; i < ranges.size(); i++) {
-        if (ranges.at(i) < (float)'inf') {
-            consecutive_count++;
-        } else if (consecutive_count > longest_count) {
-            longest_count = consecutive_count;
-            end_range = i * scan->angle_increment;
-        } else {
-            consecutive_count = 0;
-        }
-    }
-
-    start_range = end_range - (longest_count * scan->angle_increment);
-
-    RCLCPP_INFO(this->get_logger(), "object found starting at %f and ending at %f with a count of %d", start_range,
-                end_range, longest_count);
+    visualization_msgs::msg::Marker target_marker;
+    target_marker.header.frame_id = this->rear_axle_frame;
+    target_marker.header.stamp = get_clock()->now();
+    target_marker.type = visualization_msgs::msg::Marker::SPHERE_LIST;
+    target_marker.action = visualization_msgs::msg::Marker::ADD;
+    target_marker.ns = "hybrid_pp_ns";
+    target_marker.id = 1;
+    target_marker.points = points;
+    target_marker.scale.x = 0.5;
+    target_marker.scale.y = 0.5;
+    target_marker.scale.z = 0.5;
+    target_marker.color.a = 1.0;
+    target_marker.color.r = 0.6;
+    target_marker.color.b = 0.4;
 }

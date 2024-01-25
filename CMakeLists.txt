@@ -17,6 +17,7 @@ find_package(sensor_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(visualization_msgs REQUIRED)
+find_package(laser_geometry REQUIRED)
 
 # Add source for node executable (link non-ros dependencies here)
 add_executable(hybrid_pp src/PurePursuitNode.cpp src/PurePursuitNode_node.cpp)
@@ -36,6 +37,7 @@ set(dependencies
         tf2_geometry_msgs
         tf2_ros
         visualization_msgs
+        laser_geometry
         )
 
 # Link ros dependencies
