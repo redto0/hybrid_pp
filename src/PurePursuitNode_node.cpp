@@ -296,10 +296,23 @@ void PurePursuitNode::lidar_scan_cb(const sensor_msgs::msg::LaserScan::SharedPtr
     auto scan = msg.get();
 
     std::vector<float> ranges = scan->ranges;
+    int consecutive_count = 0;
+    int longest_count = 0;
+    float start_range, end_range = 0;
 
-    float current_angle = 0;
     for (int i = 0; i < ranges.size(); i++) {
-        RCLCPP_INFO(this->get_logger(), "rage at angle: %f if: %f", current_angle, scan->ranges[i]);
-        current_angle += scan->angle_increment;
+        if (ranges.at(i) < (float)'inf') {
+            consecutive_count++;
+        } else if (consecutive_count > longest_count) {
+            longest_count = consecutive_count;
+            end_range = i * scan->angle_increment;
+        } else {
+            consecutive_count = 0;
+        }
     }
+
+    start_range = end_range - (longest_count * scan->angle_increment);
+
+    RCLCPP_INFO(this->get_logger(), "object found starting at %f and ending at %f with a count of %d", start_range,
+                end_range, longest_count);
 }
