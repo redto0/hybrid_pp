@@ -64,6 +64,12 @@ private:
     /// Node frequency
     rclcpp::WallRate rate;
 
+    sensor_msgs::msg::LaserScan::SharedPtr laser_scan;
+    std::vector<geometry_msgs::msg::PoseStamped> objects;
+
+    std::mutex path_mutex;
+    std::mutex scan_mutex;
+
     // TF
     std::shared_ptr<tf2_ros::TransformListener> transform_listener;
     std::unique_ptr<tf2_ros::Buffer> tf_buffer;
@@ -90,6 +96,8 @@ private:
         ackermann_msgs::msg::AckermannDrive stop{};
         this->nav_ack_vel_pub->publish(stop);
     }
+
+    void avoid_box();
 
     std::optional<PathCalcResult> get_path_point();
 

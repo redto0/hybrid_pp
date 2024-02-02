@@ -37,7 +37,7 @@ PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions& options)
     look_ahead_vis_marker_pub = this->create_publisher<visualization_msgs::msg::Marker>("/look_ahead_marker", 1);
     intersection_point_pub = this->create_publisher<visualization_msgs::msg::Marker>("/intersection_marker", 1);
     planner_path_pub = this->create_publisher<visualization_msgs::msg::Marker>("/planner_path_marker", 1);
-    object_vis_pub = this->create_publisher<visualization_msgs::msg::Marker>("/box_vis_marker", 1);
+    object_vis_pub = this->create_publisher<visualization_msgs::msg::Marker>("/object_vis_marker", 1);
 
     // TF
     tf_buffer = std::make_unique<tf2_ros::Buffer>(this->get_clock());
@@ -56,8 +56,50 @@ PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions& options)
                 continue;
             }
 
-            // Find point on path to move to
-            auto path_result = this->get_path_point();
+            std::optional<PathCalcResult> path_result;
+            geometry_msgs::msg::Point point_to_shift;
+
+            {
+                std::unique_lock lk{this->path_mutex};
+
+                auto path_to_rear_axle = tf_buffer->lookupTransform(
+                    this->rear_axle_frame, this->path.value()->header.frame_id, tf2::TimePointZero);
+
+                auto local_path = this->path.value()->poses;
+
+                for (auto& pose : local_path) {
+                    tf2::doTransform(pose, pose, path_to_rear_axle);
+                }
+
+                for (size_t i = 0; i < local_path.size(); i++) {
+                    point_to_shift = local_path.at(i).pose.position;
+                    for (size_t j = 0; j < objects.size(); j++) {
+                        while (distance(local_path.at(i).pose.position, objects.at(j).pose.position) <= 0.75) {
+                            local_path.at(i).pose.position.y -= 0.01;
+                        }
+
+                        if (point_to_shift != local_path.at(i).pose.position) {
+                            RCLCPP_INFO(this->get_logger(), "point (%f, %f) shifted to (%f, %f)", point_to_shift.x,
+                                        point_to_shift.x, local_path.at(i).pose.position.x,
+                                        local_path.at(i).pose.position.y);
+                        }
+
+                        auto rear_axle_to_path = tf_buffer->lookupTransform(path.value()->header.frame_id,
+                                                                            this->rear_axle_frame, tf2::TimePointZero);
+
+                        for (auto& pose : local_path) {
+                            tf2::doTransform(pose, pose, rear_axle_to_path);
+                        }
+
+                        this->path.value()->poses = local_path;
+
+                        // Find point on path to move to
+                        path_result = this->get_path_point();
+                    }
+                }
+            }
+
+            this->objects.clear();
 
             // If no way to follow path, just stop
             if (!path_result.has_value()) {
@@ -92,8 +134,10 @@ void PurePursuitNode::path_cb(nav_msgs::msg::Path::SharedPtr msg) {
         RCLCPP_INFO(this->get_logger(), "Path has no frame id");
         return;
     }
-
-    this->path = msg;
+    {
+        std::unique_lock lk{this->path_mutex};
+        this->path = msg;
+    }
 }
 
 CommandCalcResult PurePursuitNode::calculate_command_to_point(const geometry_msgs::msg::PoseStamped& target_point,
@@ -294,23 +338,49 @@ std::optional<PathCalcResult> PurePursuitNode::get_path_point() {
 }
 
 void PurePursuitNode::lidar_scan_cb(const sensor_msgs::msg::LaserScan::SharedPtr msg) {
-    laser_geometry::LaserProjection projection;
-    sensor_msgs::msg::PointCloud2 points;
+    {
+        std::unique_lock lk{this->scan_mutex};
+        this->laser_scan = msg;
 
-    projection.projectLaser(msg, &points);
+        auto trans =
+            this->tf_buffer->lookupTransform(this->rear_axle_frame, laser_scan->header.frame_id, tf2::TimePointZero);
 
-    visualization_msgs::msg::Marker target_marker;
-    target_marker.header.frame_id = this->rear_axle_frame;
-    target_marker.header.stamp = get_clock()->now();
-    target_marker.type = visualization_msgs::msg::Marker::SPHERE_LIST;
-    target_marker.action = visualization_msgs::msg::Marker::ADD;
-    target_marker.ns = "hybrid_pp_ns";
-    target_marker.id = 1;
-    target_marker.points = points;
-    target_marker.scale.x = 0.5;
-    target_marker.scale.y = 0.5;
-    target_marker.scale.z = 0.5;
-    target_marker.color.a = 1.0;
-    target_marker.color.r = 0.6;
-    target_marker.color.b = 0.4;
+        for (size_t i = 0; i < laser_scan->ranges.size(); i++) {
+            if (laser_scan->ranges.at(i) < 15) {
+                geometry_msgs::msg::PoseStamped point;
+                point.header.frame_id = laser_scan->header.frame_id;
+                point.pose.position.x =
+                    laser_scan->ranges.at(i) * cos(laser_scan->angle_increment * i + (3 * 3.14 / 4));
+                point.pose.position.y =
+                    laser_scan->ranges.at(i) * sin(laser_scan->angle_increment * i + (3 * 3.14 / 4));
+
+                tf2::doTransform(point, point, trans);
+
+                objects.push_back(point);
+            }
+        }
+
+        std::vector<geometry_msgs::msg::Point> vis_points;
+
+        for (auto pose : objects) {
+            vis_points.push_back(pose.pose.position);
+        }
+
+        visualization_msgs::msg::Marker target_marker;
+        target_marker.header.frame_id = this->rear_axle_frame;
+        target_marker.header.stamp = get_clock()->now();
+        target_marker.type = visualization_msgs::msg::Marker::SPHERE_LIST;
+        target_marker.action = visualization_msgs::msg::Marker::ADD;
+        target_marker.ns = "hybrid_pp_ns";
+        target_marker.id = 1;
+        target_marker.points = vis_points;
+        target_marker.scale.x = 0.5;
+        target_marker.scale.y = 0.5;
+        target_marker.scale.z = 0.5;
+        target_marker.color.a = 1.0;
+        target_marker.color.r = 0.6;
+        target_marker.color.b = 0.4;
+
+        object_vis_pub->publish(target_marker);
+    }
 }
