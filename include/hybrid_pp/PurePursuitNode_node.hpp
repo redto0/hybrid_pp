@@ -7,6 +7,7 @@
 #include <cmath>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <thread>
+#include <mutex>
 
 #include "ackermann_msgs/msg/ackermann_drive.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
@@ -61,6 +62,10 @@ private:
     std::optional<nav_msgs::msg::Path::SharedPtr> path;
     /// Node frequency
     rclcpp::WallRate rate;
+    /// Path lock
+    std::mutex path_mtx;
+    /// Odom lock
+    std::mutex odom_mtx;
 
     // TF
     std::shared_ptr<tf2_ros::TransformListener> transform_listener;

@@ -48,13 +48,20 @@ PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions& options)
                 break;
             }
 
-            // Wait until we have path
-            if (!this->path.has_value()) {
-                continue;
-            }
+            std::optional<PathCalcResult> path_result;
+            {
+                // Lock both states
+                std::unique_lock lk{this->path_mtx};
+                std::unique_lock lk2{this->odom_mtx};
 
-            // Find point on path to move to
-            auto path_result = this->get_path_point();
+                // Wait until we have path
+                if (!this->path.has_value()) {
+                    continue;
+                }
+
+                // Find point on path to move to
+                path_result = this->get_path_point();
+            }
 
             // If no way to follow path, just stop
             if (!path_result.has_value()) {
@@ -90,7 +97,10 @@ void PurePursuitNode::path_cb(nav_msgs::msg::Path::SharedPtr msg) {
         return;
     }
 
-    this->path = msg;
+    {
+        std::unique_lock lk{this->path_mtx};
+        this->path = msg;
+    }
 }
 
 CommandCalcResult PurePursuitNode::calculate_command_to_point(const geometry_msgs::msg::PoseStamped& target_point,
@@ -185,7 +195,10 @@ void PurePursuitNode::publish_visualisation(CommandCalcResult command) {
 }
 
 void PurePursuitNode::odom_speed_cb(const nav_msgs::msg::Odometry::SharedPtr msg) {
-    current_speed = msg->twist.twist.linear.x;
+    {
+        std::unique_lock lk{this->odom_mtx};
+        current_speed = msg->twist.twist.linear.x;
+    }
 }
 
 std::optional<PathCalcResult> PurePursuitNode::get_path_point() {
