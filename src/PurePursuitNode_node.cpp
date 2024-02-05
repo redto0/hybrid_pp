@@ -62,7 +62,8 @@ PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions& options)
                 std::unique_lock lk{this->path_mtx};
                 std::unique_lock lk2{this->odom_mtx};
 
-                geometry_msgs::msg::Point point_to_shift;
+                geometry_msgs::msg::Point left_shifted_point;
+                geometry_msgs::msg::Point right_shifted_point;
 
                 auto path_frame = this->path.value()->header.frame_id;
 
@@ -79,18 +80,25 @@ PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions& options)
                 }
 
                 for (size_t i = 0; i < local_path.size(); i++) {
-                    point_to_shift = local_path.at(i).pose.position;
+                    left_shifted_point = local_path.at(i).pose.position;
+                    right_shifted_point = local_path.at(i).pose.position;
 
                     for (size_t j = 0; j < objects.size(); j++) {
-                        while (distance(local_path.at(i).pose.position, objects.at(j).pose.position) <= 0.75) {
-                            local_path.at(i).pose.position.y -= 0.01;
+                        while (distance(left_shifted_point, objects.at(j).pose.position) <= 0.75) {
+                            left_shifted_point.y -= 0.01;
                         }
                     }
-                    if (point_to_shift != local_path.at(i).pose.position) {
-                        RCLCPP_INFO(this->get_logger(), "point (%f, %f) shifted to (%f, %f)", point_to_shift.x,
-                                    point_to_shift.y, local_path.at(i).pose.position.x,
-                                    local_path.at(i).pose.position.y);
+                    for (size_t j = 0; j < objects.size(); j++) {
+                        while (distance(right_shifted_point, objects.at(j).pose.position) <= 0.75) {
+                            right_shifted_point.y += 0.01;
+                        }
                     }
+
+                    local_path.at(i).pose.position =
+                        distance(left_shifted_point, local_path.at(i).pose.position) <
+                                distance(right_shifted_point, local_path.at(i).pose.position)
+                            ? left_shifted_point
+                            : right_shifted_point;
 
                     for (auto& pose2 : local_path) {
                         tf2::doTransform(pose2, pose2, rear_axle_to_path);
