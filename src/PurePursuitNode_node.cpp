@@ -51,10 +51,11 @@ PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions& options)
                 break;
             }
 
-            // Wait until we have path
-            if (!this->path.has_value()) {
-                continue;
-            }
+            std::optional<PathCalcResult> path_result;
+            {
+                // Lock both states
+                std::unique_lock lk{this->path_mtx};
+                std::unique_lock lk2{this->odom_mtx};
 
             std::optional<PathCalcResult> path_result;
             geometry_msgs::msg::Point point_to_shift;
@@ -134,8 +135,9 @@ void PurePursuitNode::path_cb(nav_msgs::msg::Path::SharedPtr msg) {
         RCLCPP_INFO(this->get_logger(), "Path has no frame id");
         return;
     }
+
     {
-        std::unique_lock lk{this->path_mutex};
+        std::unique_lock lk{this->path_mtx};
         this->path = msg;
     }
 }
@@ -232,7 +234,10 @@ void PurePursuitNode::publish_visualisation(CommandCalcResult command) {
 }
 
 void PurePursuitNode::odom_speed_cb(const nav_msgs::msg::Odometry::SharedPtr msg) {
-    current_speed = msg->twist.twist.linear.x;
+    {
+        std::unique_lock lk{this->odom_mtx};
+        current_speed = msg->twist.twist.linear.x;
+    }
 }
 
 std::optional<PathCalcResult> PurePursuitNode::get_path_point() {

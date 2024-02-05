@@ -5,6 +5,7 @@
 #include <tf2_ros/transform_listener.h>
 
 #include <cmath>
+#include <mutex>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <thread>
 
@@ -63,6 +64,10 @@ private:
     std::optional<nav_msgs::msg::Path::SharedPtr> path;
     /// Node frequency
     rclcpp::WallRate rate;
+    /// Path lock
+    std::mutex path_mtx;
+    /// Odom lock
+    std::mutex odom_mtx;
 
     sensor_msgs::msg::LaserScan::SharedPtr laser_scan;
     std::vector<geometry_msgs::msg::PoseStamped> objects;
