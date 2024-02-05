@@ -52,48 +52,59 @@ PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions& options)
             }
 
             std::optional<PathCalcResult> path_result;
+
+            if (!path.has_value()) {
+                continue;
+            }
+
             {
                 // Lock both states
                 std::unique_lock lk{this->path_mtx};
                 std::unique_lock lk2{this->odom_mtx};
 
-                std::optional<PathCalcResult> path_result;
                 geometry_msgs::msg::Point point_to_shift;
 
-                auto path_to_rear_axle = tf_buffer->lookupTransform(
-                    this->rear_axle_frame, this->path.value()->header.frame_id, tf2::TimePointZero);
+                auto path_frame = this->path.value()->header.frame_id;
+
+                auto path_to_rear_axle =
+                    tf_buffer->lookupTransform(this->rear_axle_frame, path_frame, tf2::TimePointZero);
+
+                auto rear_axle_to_path =
+                    tf_buffer->lookupTransform(path_frame, this->rear_axle_frame, tf2::TimePointZero);
 
                 auto local_path = this->path.value()->poses;
 
-                for (auto& pose : local_path) {
-                    tf2::doTransform(pose, pose, path_to_rear_axle);
+                for (auto& pose1 : local_path) {
+                    tf2::doTransform(pose1, pose1, path_to_rear_axle);
                 }
 
                 for (size_t i = 0; i < local_path.size(); i++) {
                     point_to_shift = local_path.at(i).pose.position;
+
                     for (size_t j = 0; j < objects.size(); j++) {
                         while (distance(local_path.at(i).pose.position, objects.at(j).pose.position) <= 0.75) {
                             local_path.at(i).pose.position.y -= 0.01;
                         }
-
-                        if (point_to_shift != local_path.at(i).pose.position) {
-                            RCLCPP_INFO(this->get_logger(), "point (%f, %f) shifted to (%f, %f)", point_to_shift.x,
-                                        point_to_shift.x, local_path.at(i).pose.position.x,
-                                        local_path.at(i).pose.position.y);
-                        }
-
-                        auto rear_axle_to_path = tf_buffer->lookupTransform(path.value()->header.frame_id,
-                                                                            this->rear_axle_frame, tf2::TimePointZero);
-
-                        for (auto& pose : local_path) {
-                            tf2::doTransform(pose, pose, rear_axle_to_path);
-                        }
-
-                        this->path.value()->poses = local_path;
-
-                        // Find point on path to move to
-                        path_result = this->get_path_point();
                     }
+                    if (point_to_shift != local_path.at(i).pose.position) {
+                        RCLCPP_INFO(this->get_logger(), "point (%f, %f) shifted to (%f, %f)", point_to_shift.x,
+                                    point_to_shift.y, local_path.at(i).pose.position.x,
+                                    local_path.at(i).pose.position.y);
+                    }
+
+                    for (auto& pose2 : local_path) {
+                        tf2::doTransform(pose2, pose2, rear_axle_to_path);
+                    }
+
+                    this->path.value()->poses = local_path;
+
+                    path_result = this->get_path_point();
+
+                    for (auto& pose1 : local_path) {
+                        tf2::doTransform(pose1, pose1, path_to_rear_axle);
+                    }
+
+                    // Find point on path to move to
                 }
             }
 
