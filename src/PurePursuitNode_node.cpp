@@ -57,11 +57,8 @@ PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions& options)
                 std::unique_lock lk{this->path_mtx};
                 std::unique_lock lk2{this->odom_mtx};
 
-            std::optional<PathCalcResult> path_result;
-            geometry_msgs::msg::Point point_to_shift;
-
-            {
-                std::unique_lock lk{this->path_mutex};
+                std::optional<PathCalcResult> path_result;
+                geometry_msgs::msg::Point point_to_shift;
 
                 auto path_to_rear_axle = tf_buffer->lookupTransform(
                     this->rear_axle_frame, this->path.value()->header.frame_id, tf2::TimePointZero);
