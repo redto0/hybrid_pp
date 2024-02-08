@@ -53,67 +53,13 @@ PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions& options)
 
             std::optional<PathCalcResult> path_result;
 
-            if (!path.has_value()) {
+            if (!path_spline.has_value()) {
                 continue;
             }
 
             {
-                // Lock both states
-                std::unique_lock lk{this->path_mtx};
-                std::unique_lock lk2{this->odom_mtx};
-
-                geometry_msgs::msg::Point left_shifted_point;
-                geometry_msgs::msg::Point right_shifted_point;
-
-                auto path_frame = this->path.value()->header.frame_id;
-
-                auto path_to_rear_axle =
-                    tf_buffer->lookupTransform(this->rear_axle_frame, path_frame, tf2::TimePointZero);
-
-                auto rear_axle_to_path =
-                    tf_buffer->lookupTransform(path_frame, this->rear_axle_frame, tf2::TimePointZero);
-
-                auto local_path = this->path.value()->poses;
-
-                for (auto& pose1 : local_path) {
-                    tf2::doTransform(pose1, pose1, path_to_rear_axle);
-                }
-
-                for (size_t i = 0; i < local_path.size(); i++) {
-                    left_shifted_point = local_path.at(i).pose.position;
-                    right_shifted_point = local_path.at(i).pose.position;
-
-                    for (size_t j = 0; j < objects.size(); j++) {
-                        while (distance(left_shifted_point, objects.at(j).pose.position) <= 0.75) {
-                            left_shifted_point.y -= 0.01;
-                        }
-                    }
-                    for (size_t j = 0; j < objects.size(); j++) {
-                        while (distance(right_shifted_point, objects.at(j).pose.position) <= 0.75) {
-                            right_shifted_point.y += 0.01;
-                        }
-                    }
-
-                    local_path.at(i).pose.position =
-                        distance(left_shifted_point, local_path.at(i).pose.position) <
-                                distance(right_shifted_point, local_path.at(i).pose.position)
-                            ? left_shifted_point
-                            : right_shifted_point;
-
-                    for (auto& pose2 : local_path) {
-                        tf2::doTransform(pose2, pose2, rear_axle_to_path);
-                    }
-
-                    this->path.value()->poses = local_path;
-
-                    path_result = this->get_path_point();
-
-                    for (auto& pose1 : local_path) {
-                        tf2::doTransform(pose1, pose1, path_to_rear_axle);
-                    }
-
-                    // Find point on path to move to
-                }
+                std::unique_lock lk{this->spline_mtx};
+                path_result = this->get_path_point(this->path_spline.value());
             }
 
             this->objects.clear();
@@ -132,8 +78,11 @@ PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions& options)
             auto command =
                 this->calculate_command_to_point((*path_result).intersection_point, (*path_result).look_ahead_distance);
 
-            if (debug) {
-                publish_visualisation(command);
+            {
+                std::unique_lock lk{this->spline_mtx};
+                if (debug) {
+                    publish_visualisation(command, (*path_result).intersection_point, this->path_spline.value());
+                }
             }
 
             nav_ack_vel_pub->publish(command.command);
@@ -153,8 +102,9 @@ void PurePursuitNode::path_cb(nav_msgs::msg::Path::SharedPtr msg) {
     }
 
     {
-        std::unique_lock lk{this->path_mtx};
-        this->path = msg;
+        std::unique_lock lk{this->spline_mtx};
+        std::unique_lock lk2{this->odom_mtx};
+        this->path_spline = get_path_spline(*msg);
     }
 }
 
@@ -181,7 +131,9 @@ CommandCalcResult PurePursuitNode::calculate_command_to_point(const geometry_msg
     return out;
 }
 
-void PurePursuitNode::publish_visualisation(CommandCalcResult command) {
+void PurePursuitNode::publish_visualisation(CommandCalcResult command,
+                                            geometry_msgs::msg::PoseStamped intersection_point,
+                                            std::vector<geometry_msgs::msg::PoseStamped> spline) {
     visualization_msgs::msg::Marker path_prediction_marker{};
     // Declares the path prediction marker in the rear axle frame
     path_prediction_marker.header.frame_id = rear_axle_frame;
@@ -207,6 +159,39 @@ void PurePursuitNode::publish_visualisation(CommandCalcResult command) {
     look_ahead_distance_marker.scale.x = 0.1;
     look_ahead_distance_marker.color.a = 1.0;
     look_ahead_distance_marker.color.r = 1.0;
+
+    std::vector<geometry_msgs::msg::Point> vis_spline;
+    for (auto i : spline) {
+        vis_spline.push_back(i.pose.position);
+    }
+
+    visualization_msgs::msg::Marker spline_marker{};
+    spline_marker.header.frame_id = this->rear_axle_frame;
+    spline_marker.header.stamp = get_clock()->now();
+    spline_marker.type = visualization_msgs::msg::Marker::LINE_STRIP;
+    spline_marker.action = visualization_msgs::msg::Marker::ADD;
+    spline_marker.ns = "hybrid_pp_ns";
+    spline_marker.id = 1;
+    spline_marker.pose.orientation.w = 1.0;
+    spline_marker.scale.x = 0.1;
+    spline_marker.color.a = 1.0;
+    spline_marker.color.r = 1.0;
+    spline_marker.points = vis_spline;
+
+    visualization_msgs::msg::Marker target_marker;
+    target_marker.header.frame_id = this->rear_axle_frame;
+    target_marker.header.stamp = get_clock()->now();
+    target_marker.type = visualization_msgs::msg::Marker::CUBE;
+    target_marker.action = visualization_msgs::msg::Marker::ADD;
+    target_marker.ns = "hybrid_pp_ns";
+    target_marker.id = 1;
+    target_marker.pose = intersection_point.pose;
+    target_marker.scale.x = 0.5;
+    target_marker.scale.y = 0.5;
+    target_marker.scale.z = 0.5;
+    target_marker.color.a = 1.0;
+    target_marker.color.r = 0.6;
+    target_marker.color.b = 0.4;
 
     // Position used for plotting the visualization markers
     geometry_msgs::msg::Point path_graph_point;
@@ -245,6 +230,9 @@ void PurePursuitNode::publish_visualisation(CommandCalcResult command) {
     }
 
     // Publish the markers to their respective visualization topics
+    planner_path_pub->publish(spline_marker);
+    intersection_point_pub->publish(target_marker);
+
     travel_path_pub->publish(path_prediction_marker);
     look_ahead_vis_marker_pub->publish(look_ahead_distance_marker);
 }
@@ -256,59 +244,19 @@ void PurePursuitNode::odom_speed_cb(const nav_msgs::msg::Odometry::SharedPtr msg
     }
 }
 
-std::optional<PathCalcResult> PurePursuitNode::get_path_point() {
-    // For sanity
-    if (!this->path.has_value()) {
-        return std::nullopt;
-    }
-
-    auto trans =
-        this->tf_buffer->lookupTransform(this->rear_axle_frame, path.value()->header.frame_id, tf2::TimePointZero);
-
-    // Create a copy of the path to avoid mutating the main
-    auto local_path = **this->path;
-
-    // Transform path from odom or map to rear_axel. This must be done each iteration, else we can only run on new paths
-    for (auto& pose : local_path.poses) {
-        tf2::doTransform(pose, pose, trans);
-        pose.header.frame_id = this->rear_axle_frame;
-    }
-    local_path.header.frame_id = this->rear_axle_frame;
-
-    // Spline connecting our path points
-    std::vector<geometry_msgs::msg::Point> spline;
-    geometry_msgs::msg::PoseStamped intercepted_pose{};
-
+std::optional<PathCalcResult> PurePursuitNode::get_path_point(
+    std::vector<geometry_msgs::msg::PoseStamped> path_spline) {
     // Calc look ahead distance
     float look_ahead_distance = std::clamp(k_dd * current_speed, min_look_ahead_distance, max_look_ahead_distance);
 
-    // Build a spline of linear lines for our path
-    for (size_t i = 0; i < local_path.poses.size() - 1; i++) {
-        auto point1 = local_path.poses.at(i).pose.position;
-        auto point2 = local_path.poses.at(i + 1).pose.position;
-
-        // Do the DDA algorithm https://en.wikipedia.org/wiki/Digital_differential_analyzer_(graphics_algorithm)
-        float dx = (float)point2.x - (float)point1.x;
-        float dy = (float)point2.y - (float)point1.y;
-        float steps = std::max(std::abs(dx), std::abs(dy));
-        float x_inc = dx / steps;
-        float y_inc = dy / steps;
-
-        for (int j = 0; (float)j < steps; j++) {
-            point1.x += x_inc;
-            point1.y += y_inc;
-            spline.push_back(point1);
-        }
-    }
+    geometry_msgs::msg::PoseStamped intercepted_pose{};
 
     // Find point on the spline that intersects our lookahead, must be in front of us
     bool point_found = false;
-    for (const auto& i : spline) {
+    for (const auto& i : path_spline) {
         // The spline is somewhat sparse, so have some leeway in selecting points on it
-        if (i.x >= 0 && std::abs(distance(i, zero) - look_ahead_distance) <= 1.0) {
-            intercepted_pose.pose.position.x = i.x;
-            intercepted_pose.pose.position.y = i.y;
-            intercepted_pose.header.frame_id = local_path.header.frame_id;
+        if (i.pose.position.x >= 0 && std::abs(distance(i.pose.position, zero) - look_ahead_distance) <= 1.0) {
+            intercepted_pose = i;
             point_found = true;
             break;
         }
@@ -318,46 +266,12 @@ std::optional<PathCalcResult> PurePursuitNode::get_path_point() {
         return std::nullopt;
     }
 
-    if (debug) {
-        visualization_msgs::msg::Marker spline_marker{};
-        spline_marker.header.frame_id = this->rear_axle_frame;
-        spline_marker.header.stamp = get_clock()->now();
-        spline_marker.type = visualization_msgs::msg::Marker::LINE_STRIP;
-        spline_marker.action = visualization_msgs::msg::Marker::ADD;
-        spline_marker.ns = "hybrid_pp_ns";
-        spline_marker.id = 1;
-        spline_marker.pose.orientation.w = 1.0;
-        spline_marker.scale.x = 0.1;
-        spline_marker.color.a = 1.0;
-        spline_marker.color.r = 1.0;
-        spline_marker.points = spline;
-
-        visualization_msgs::msg::Marker target_marker;
-        target_marker.header.frame_id = this->rear_axle_frame;
-        target_marker.header.stamp = get_clock()->now();
-        target_marker.type = visualization_msgs::msg::Marker::CUBE;
-        target_marker.action = visualization_msgs::msg::Marker::ADD;
-        target_marker.ns = "hybrid_pp_ns";
-        target_marker.id = 1;
-        target_marker.pose = intercepted_pose.pose;
-        target_marker.scale.x = 0.5;
-        target_marker.scale.y = 0.5;
-        target_marker.scale.z = 0.5;
-        target_marker.color.a = 1.0;
-        target_marker.color.r = 0.6;
-        target_marker.color.b = 0.4;
-
-        planner_path_pub->publish(spline_marker);
-        intersection_point_pub->publish(target_marker);
-    }
-
     PathCalcResult out{};
     out.intersection_point = intercepted_pose;
     out.look_ahead_distance = look_ahead_distance;
 
     return out;
 }
-
 void PurePursuitNode::lidar_scan_cb(const sensor_msgs::msg::LaserScan::SharedPtr msg) {
     {
         std::unique_lock lk{this->scan_mutex};
@@ -366,8 +280,33 @@ void PurePursuitNode::lidar_scan_cb(const sensor_msgs::msg::LaserScan::SharedPtr
         auto trans =
             this->tf_buffer->lookupTransform(this->rear_axle_frame, laser_scan->header.frame_id, tf2::TimePointZero);
 
+        int count = 0;
+
+        std::map<int, int> obj_index_pairs;
+
+        // needs map for index pairs for objs with consecutive indexs greater than 10
         for (size_t i = 0; i < laser_scan->ranges.size(); i++) {
-            if (laser_scan->ranges.at(i) < 15) {
+            int starting_index = i;
+            int ending_index = i + 1;
+            count = 0;
+            for (size_t j = i; j < laser_scan->ranges.size() - i; j++) {
+                if (laser_scan->ranges.at(j) < 15) {
+                    count++;
+                } else {
+                    ending_index = j;
+                    break;
+                }
+            }
+
+            if (count > 3) {
+                RCLCPP_INFO(this->get_logger(), "count is: %d, starting index is %d, ending index is %d", count,
+                            starting_index, ending_index);
+                obj_index_pairs[starting_index] = ending_index;
+            }
+        }
+
+        for (auto const& [key, val] : obj_index_pairs) {
+            for (int i = key; i < val; i++) {
                 geometry_msgs::msg::PoseStamped point;
                 point.header.frame_id = laser_scan->header.frame_id;
                 point.pose.position.x =
@@ -404,4 +343,66 @@ void PurePursuitNode::lidar_scan_cb(const sensor_msgs::msg::LaserScan::SharedPtr
 
         object_vis_pub->publish(target_marker);
     }
+}
+
+std::vector<geometry_msgs::msg::PoseStamped> PurePursuitNode::get_path_spline(const nav_msgs::msg::Path& path) {
+    auto trans = this->tf_buffer->lookupTransform(this->rear_axle_frame, path.header.frame_id, tf2::TimePointZero);
+
+    // Create a copy of the path to avoid mutating the main
+    auto local_path = path;
+
+    // Transform path from odom or map to rear_axel. This must be done each iteration, else we can only run on new paths
+    for (auto& pose : local_path.poses) {
+        tf2::doTransform(pose, pose, trans);
+        pose.header.frame_id = this->rear_axle_frame;
+    }
+    local_path.header.frame_id = this->rear_axle_frame;
+
+    // Spline connecting our path points
+    std::vector<geometry_msgs::msg::PoseStamped> spline;
+
+    // Build a spline of linear lines for our path
+    for (size_t i = 0; i < local_path.poses.size() - 1; i++) {
+        auto point1 = local_path.poses.at(i);
+        auto point2 = local_path.poses.at(i + 1);
+
+        // Do the DDA algorithm https://en.wikipedia.org/wiki/Digital_differential_analyzer_(graphics_algorithm)
+        float dx = (float)point2.pose.position.x - (float)point1.pose.position.x;
+        float dy = (float)point2.pose.position.y - (float)point1.pose.position.y;
+        float steps = std::max(std::abs(dx), std::abs(dy));
+        float x_inc = dx / steps;
+        float y_inc = dy / steps;
+
+        for (int j = 0; (float)j < steps; j++) {
+            point1.pose.position.x += x_inc;
+            point1.pose.position.y += y_inc;
+            spline.push_back(point1);
+        }
+    }
+
+    geometry_msgs::msg::Point left_shifted_point;
+    geometry_msgs::msg::Point right_shifted_point;
+
+    for (size_t i = 0; i < spline.size(); i++) {
+        left_shifted_point = spline.at(i).pose.position;
+        right_shifted_point = spline.at(i).pose.position;
+
+        for (size_t j = 0; j < objects.size(); j++) {
+            while (distance(left_shifted_point, objects.at(j).pose.position) <= 2) {
+                left_shifted_point.y -= 0.01;
+            }
+        }
+        for (size_t j = 0; j < objects.size(); j++) {
+            while (distance(right_shifted_point, objects.at(j).pose.position) <= 2) {
+                right_shifted_point.y += 0.01;
+            }
+        }
+
+        spline.at(i).pose.position = distance(left_shifted_point, spline.at(i).pose.position) <=
+                                             distance(right_shifted_point, spline.at(i).pose.position)
+                                         ? left_shifted_point
+                                         : right_shifted_point;
+    }
+
+    return spline;
 }

@@ -60,12 +60,10 @@ private:
     std::atomic_bool stop_token{false};
     /// Thread that performs the main loop
     std::thread work_thread;
-    /// Current path to follow. Should always be in the rear axel frame
-    std::optional<nav_msgs::msg::Path::SharedPtr> path;
     /// Node frequency
     rclcpp::WallRate rate;
     /// Path lock
-    std::mutex path_mtx;
+    std::mutex spline_mtx;
     /// Odom lock
     std::mutex odom_mtx;
 
@@ -78,6 +76,8 @@ private:
     // TF
     std::shared_ptr<tf2_ros::TransformListener> transform_listener;
     std::unique_ptr<tf2_ros::Buffer> tf_buffer;
+
+    std::optional<std::vector<geometry_msgs::msg::PoseStamped>> path_spline;
 
     // Pub/Sub
     rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr path_sub;
@@ -104,7 +104,8 @@ private:
 
     void avoid_box();
 
-    std::optional<PathCalcResult> get_path_point();
+    std::optional<PathCalcResult> get_path_point(std::vector<geometry_msgs::msg::PoseStamped> path_spline);
+    std::vector<geometry_msgs::msg::PoseStamped> get_path_spline(const nav_msgs::msg::Path& path);
 
 public:
     PurePursuitNode(const rclcpp::NodeOptions& options);
@@ -116,7 +117,8 @@ public:
     /// Callback for getting getting and pre-prossesing LIDAR scans
     void lidar_scan_cb(sensor_msgs::msg::LaserScan::SharedPtr msg);
     /// Publishes markers visualising the pure pursuit geometry.
-    void publish_visualisation(CommandCalcResult);
+    void publish_visualisation(CommandCalcResult, geometry_msgs::msg::PoseStamped intersection_point,
+                               std::vector<geometry_msgs::msg::PoseStamped> spline);
     /// Calculates the command to reach the given point.
     CommandCalcResult calculate_command_to_point(const geometry_msgs::msg::PoseStamped& target_point,
                                                  float look_ahead_distance) const;
