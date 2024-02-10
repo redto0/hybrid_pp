@@ -51,7 +51,10 @@ PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions& options)
                 break;
             }
 
+            /// The calculated intersection and look ahead distance
             std::optional<PathCalcResult> path_result;
+            /// Visualization compoenents for publishing visualization
+            VisualizationComponents vis_components{};
 
             if (!path_spline.has_value()) {
                 continue;
@@ -61,8 +64,6 @@ PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions& options)
                 std::unique_lock lk{this->spline_mtx};
                 path_result = this->get_path_point(this->path_spline.value());
             }
-
-            this->objects.clear();
 
             // If no way to follow path, just stop
             if (!path_result.has_value()) {
@@ -80,8 +81,16 @@ PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions& options)
 
             {
                 std::unique_lock lk{this->spline_mtx};
+                std::unique_lock lk2{this->obj_mtx};
+
+                vis_components.intersection_point = (*path_result).intersection_point;
+                vis_components.look_ahead_distance = (*path_result).look_ahead_distance;
+                vis_components.objects = this->objects;
+                vis_components.path_spline = this->path_spline;
+                vis_components.turning_radius = command.turning_radius;
+
                 if (debug) {
-                    publish_visualisation(command, (*path_result).intersection_point, this->path_spline.value());
+                    publish_visualisation(vis_components);
                 }
             }
 
@@ -104,6 +113,7 @@ void PurePursuitNode::path_cb(nav_msgs::msg::Path::SharedPtr msg) {
     {
         std::unique_lock lk{this->spline_mtx};
         std::unique_lock lk2{this->odom_mtx};
+        std::unique_lock lk3{this->obj_mtx};
         this->path_spline = get_path_spline(*msg);
     }
 }
@@ -131,9 +141,7 @@ CommandCalcResult PurePursuitNode::calculate_command_to_point(const geometry_msg
     return out;
 }
 
-void PurePursuitNode::publish_visualisation(CommandCalcResult command,
-                                            geometry_msgs::msg::PoseStamped intersection_point,
-                                            std::vector<geometry_msgs::msg::PoseStamped> spline) {
+void PurePursuitNode::publish_visualisation(VisualizationComponents vis_compoenets) {
     visualization_msgs::msg::Marker path_prediction_marker{};
     // Declares the path prediction marker in the rear axle frame
     path_prediction_marker.header.frame_id = rear_axle_frame;
@@ -161,7 +169,7 @@ void PurePursuitNode::publish_visualisation(CommandCalcResult command,
     look_ahead_distance_marker.color.r = 1.0;
 
     std::vector<geometry_msgs::msg::Point> vis_spline;
-    for (auto i : spline) {
+    for (auto i : vis_compoenets.path_spline.value()) {
         vis_spline.push_back(i.pose.position);
     }
 
@@ -178,43 +186,65 @@ void PurePursuitNode::publish_visualisation(CommandCalcResult command,
     spline_marker.color.r = 1.0;
     spline_marker.points = vis_spline;
 
-    visualization_msgs::msg::Marker target_marker;
-    target_marker.header.frame_id = this->rear_axle_frame;
-    target_marker.header.stamp = get_clock()->now();
-    target_marker.type = visualization_msgs::msg::Marker::CUBE;
-    target_marker.action = visualization_msgs::msg::Marker::ADD;
-    target_marker.ns = "hybrid_pp_ns";
-    target_marker.id = 1;
-    target_marker.pose = intersection_point.pose;
-    target_marker.scale.x = 0.5;
-    target_marker.scale.y = 0.5;
-    target_marker.scale.z = 0.5;
-    target_marker.color.a = 1.0;
-    target_marker.color.r = 0.6;
-    target_marker.color.b = 0.4;
+    visualization_msgs::msg::Marker intersection_marker;
+    intersection_marker.header.frame_id = this->rear_axle_frame;
+    intersection_marker.header.stamp = get_clock()->now();
+    intersection_marker.type = visualization_msgs::msg::Marker::CUBE;
+    intersection_marker.action = visualization_msgs::msg::Marker::ADD;
+    intersection_marker.ns = "hybrid_pp_ns";
+    intersection_marker.id = 1;
+    intersection_marker.pose = vis_compoenets.intersection_point.pose;
+    intersection_marker.scale.x = 0.5;
+    intersection_marker.scale.y = 0.5;
+    intersection_marker.scale.z = 0.5;
+    intersection_marker.color.a = 1.0;
+    intersection_marker.color.r = 0.6;
+    intersection_marker.color.b = 0.4;
+
+    std::vector<geometry_msgs::msg::Point> vis_points;
+
+    for (auto pose : vis_compoenets.objects) {
+        vis_points.push_back(pose.pose.position);
+    }
+
+    visualization_msgs::msg::Marker object_marker;
+    object_marker.header.frame_id = this->rear_axle_frame;
+    object_marker.header.stamp = get_clock()->now();
+    object_marker.type = visualization_msgs::msg::Marker::SPHERE_LIST;
+    object_marker.action = visualization_msgs::msg::Marker::ADD;
+    object_marker.ns = "hybrid_pp_ns";
+    object_marker.id = 1;
+    object_marker.points = vis_points;
+    object_marker.scale.x = 0.5;
+    object_marker.scale.y = 0.5;
+    object_marker.scale.z = 0.5;
+    object_marker.color.a = 1.0;
+    object_marker.color.r = 0.6;
+    object_marker.color.b = 0.4;
 
     // Position used for plotting the visualization markers
     geometry_msgs::msg::Point path_graph_point;
     geometry_msgs::msg::Point look_ahead_graph_point;
 
     // If our steering angle is negative, graphing math is a little different
-    if (command.turning_radius < 0) {
+    if (vis_compoenets.turning_radius < 0) {
         // Loop runs until the point generated hits the look ahead distance raduis
-        for (double index = 0; distance(path_graph_point, zero) - command.look_ahead_distance <= 0; index += 0.001) {
+        for (double index = 0; distance(path_graph_point, zero) - vis_compoenets.look_ahead_distance <= 0;
+             index += 0.001) {
             // Sets the x and y coords using polar coodiants the the ICR as the origin
-            path_graph_point.x = command.turning_radius * -sin(index);
-            path_graph_point.y = command.turning_radius * -cos(index) + command.turning_radius;
+            path_graph_point.x = vis_compoenets.turning_radius * -sin(index);
+            path_graph_point.y = vis_compoenets.turning_radius * -cos(index) + vis_compoenets.turning_radius;
 
             // Appends the generated point to the markers list of points
             path_prediction_marker.points.push_back(path_graph_point);
         }
     } else {
         // Loop runs until the point generated hits the look ahead distance raduis
-        for (double index = -3.14 / 2; distance(path_graph_point, zero) - command.look_ahead_distance <= 0;
+        for (double index = -3.14 / 2; distance(path_graph_point, zero) - vis_compoenets.look_ahead_distance <= 0;
              index += 0.001) {
             // Sets the x and y coords using ploar coodiants the the ICR as the origin
-            path_graph_point.x = command.turning_radius * cos(index);
-            path_graph_point.y = command.turning_radius * sin(index) + command.turning_radius;
+            path_graph_point.x = vis_compoenets.turning_radius * cos(index);
+            path_graph_point.y = vis_compoenets.turning_radius * sin(index) + vis_compoenets.turning_radius;
 
             // Appends the generated point to the markers list of points
             path_prediction_marker.points.push_back(path_graph_point);
@@ -223,16 +253,16 @@ void PurePursuitNode::publish_visualisation(CommandCalcResult command,
 
     // Appends a list of points in a circle to the look ahead distance marker using look ahead distance as radius
     for (double index = 0; index <= 2 * 3.14; index += 0.01) {
-        look_ahead_graph_point.x = command.look_ahead_distance * cos(index);
-        look_ahead_graph_point.y = command.look_ahead_distance * sin(index);
+        look_ahead_graph_point.x = vis_compoenets.look_ahead_distance * cos(index);
+        look_ahead_graph_point.y = vis_compoenets.look_ahead_distance * sin(index);
 
         look_ahead_distance_marker.points.push_back(look_ahead_graph_point);
     }
 
     // Publish the markers to their respective visualization topics
     planner_path_pub->publish(spline_marker);
-    intersection_point_pub->publish(target_marker);
-
+    intersection_point_pub->publish(intersection_marker);
+    object_vis_pub->publish(object_marker);
     travel_path_pub->publish(path_prediction_marker);
     look_ahead_vis_marker_pub->publish(look_ahead_distance_marker);
 }
@@ -273,78 +303,58 @@ std::optional<PathCalcResult> PurePursuitNode::get_path_point(
     return out;
 }
 void PurePursuitNode::lidar_scan_cb(const sensor_msgs::msg::LaserScan::SharedPtr msg) {
+    auto laser_scan = msg;
+
     {
-        std::unique_lock lk{this->scan_mutex};
-        this->laser_scan = msg;
-
-        auto trans =
-            this->tf_buffer->lookupTransform(this->rear_axle_frame, laser_scan->header.frame_id, tf2::TimePointZero);
-
-        int count = 0;
-
-        std::map<int, int> obj_index_pairs;
-
-        // needs map for index pairs for objs with consecutive indexs greater than 10
-        for (size_t i = 0; i < laser_scan->ranges.size(); i++) {
-            int starting_index = i;
-            int ending_index = i + 1;
-            count = 0;
-            for (size_t j = i; j < laser_scan->ranges.size() - i; j++) {
-                if (laser_scan->ranges.at(j) < 15) {
-                    count++;
-                } else {
-                    ending_index = j;
-                    break;
-                }
-            }
-
-            if (count > 3) {
-                RCLCPP_INFO(this->get_logger(), "count is: %d, starting index is %d, ending index is %d", count,
-                            starting_index, ending_index);
-                obj_index_pairs[starting_index] = ending_index;
-            }
-        }
-
-        for (auto const& [key, val] : obj_index_pairs) {
-            for (int i = key; i < val; i++) {
-                geometry_msgs::msg::PoseStamped point;
-                point.header.frame_id = laser_scan->header.frame_id;
-                point.pose.position.x =
-                    laser_scan->ranges.at(i) * cos(laser_scan->angle_increment * i + (3 * 3.14 / 4));
-                point.pose.position.y =
-                    laser_scan->ranges.at(i) * sin(laser_scan->angle_increment * i + (3 * 3.14 / 4));
-
-                tf2::doTransform(point, point, trans);
-
-                objects.push_back(point);
-            }
-        }
-
-        std::vector<geometry_msgs::msg::Point> vis_points;
-
-        for (auto pose : objects) {
-            vis_points.push_back(pose.pose.position);
-        }
-
-        visualization_msgs::msg::Marker target_marker;
-        target_marker.header.frame_id = this->rear_axle_frame;
-        target_marker.header.stamp = get_clock()->now();
-        target_marker.type = visualization_msgs::msg::Marker::SPHERE_LIST;
-        target_marker.action = visualization_msgs::msg::Marker::ADD;
-        target_marker.ns = "hybrid_pp_ns";
-        target_marker.id = 1;
-        target_marker.points = vis_points;
-        target_marker.scale.x = 0.5;
-        target_marker.scale.y = 0.5;
-        target_marker.scale.z = 0.5;
-        target_marker.color.a = 1.0;
-        target_marker.color.r = 0.6;
-        target_marker.color.b = 0.4;
-
-        object_vis_pub->publish(target_marker);
+        std::unique_lock lk{this->obj_mtx};
+        this->objects = get_objects_from_scan(laser_scan);
     }
 }
 
+std::vector<geometry_msgs::msg::PoseStamped> PurePursuitNode::get_objects_from_scan(
+    std::shared_ptr<sensor_msgs::msg::LaserScan>& laser_scan) {
+    auto trans =
+        this->tf_buffer->lookupTransform(this->rear_axle_frame, laser_scan->header.frame_id, tf2::TimePointZero);
+
+    int count = 0;
+
+    std::map<int, int> obj_index_pairs;
+    std::vector<geometry_msgs::msg::PoseStamped> detected_objects;
+
+    // needs map for index pairs for objs with consecutive indexs greater than 10
+    for (size_t i = 0; i < laser_scan->ranges.size(); i++) {
+        int starting_index = i;
+        int ending_index = i + 1;
+        count = 0;
+        for (size_t j = i; j < laser_scan->ranges.size() - i; j++) {
+            if (laser_scan->ranges.at(j) < 15) {
+                count++;
+            } else {
+                ending_index = j;
+                break;
+            }
+        }
+
+        if (count >= 1) {
+            obj_index_pairs[starting_index] = ending_index;
+        }
+    }
+
+    for (auto const& [key, val] : obj_index_pairs) {
+        for (int i = key; i < val; i++) {
+            geometry_msgs::msg::PoseStamped point;
+            point.header.frame_id = laser_scan->header.frame_id;
+            point.pose.position.x = laser_scan->ranges.at(i) * cos(laser_scan->angle_increment * i + (3 * 3.14 / 4));
+            point.pose.position.y = laser_scan->ranges.at(i) * sin(laser_scan->angle_increment * i + (3 * 3.14 / 4));
+
+            tf2::doTransform(point, point, trans);
+
+            detected_objects.push_back(point);
+        }
+    }
+
+    return detected_objects;
+}
 std::vector<geometry_msgs::msg::PoseStamped> PurePursuitNode::get_path_spline(const nav_msgs::msg::Path& path) {
     auto trans = this->tf_buffer->lookupTransform(this->rear_axle_frame, path.header.frame_id, tf2::TimePointZero);
 

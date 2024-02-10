@@ -35,6 +35,19 @@ struct PathCalcResult {
     float look_ahead_distance{};
 };
 
+struct VisualizationComponents {
+    /// Point on the path we are moving to
+    geometry_msgs::msg::PoseStamped intersection_point{};
+    /// Distance to the point on the path used
+    float look_ahead_distance{};
+    /// Radius of the arc being followed in the command
+    double turning_radius{};
+    /// A list of positions of the objects detected by the lidar
+    std::vector<geometry_msgs::msg::PoseStamped> objects;
+    /// The interpreted set of points between the points given from the planner
+    std::optional<std::vector<geometry_msgs::msg::PoseStamped>> path_spline;
+};
+
 class PurePursuitNode : public rclcpp::Node {
 private:
     /// Standard point (0,0), this acts as the center of the rear axle
@@ -66,18 +79,17 @@ private:
     std::mutex spline_mtx;
     /// Odom lock
     std::mutex odom_mtx;
+    /// Objects lock
+    std::mutex obj_mtx;
 
-    sensor_msgs::msg::LaserScan::SharedPtr laser_scan;
+    /// The interpreted set of points between the points given from the planner
+    std::optional<std::vector<geometry_msgs::msg::PoseStamped>> path_spline;
+    /// A list of positions of the objects detected by the lidar
     std::vector<geometry_msgs::msg::PoseStamped> objects;
-
-    std::mutex path_mutex;
-    std::mutex scan_mutex;
 
     // TF
     std::shared_ptr<tf2_ros::TransformListener> transform_listener;
     std::unique_ptr<tf2_ros::Buffer> tf_buffer;
-
-    std::optional<std::vector<geometry_msgs::msg::PoseStamped>> path_spline;
 
     // Pub/Sub
     rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr path_sub;
@@ -116,9 +128,11 @@ public:
     void odom_speed_cb(nav_msgs::msg::Odometry::SharedPtr msg);
     /// Callback for getting getting and pre-prossesing LIDAR scans
     void lidar_scan_cb(sensor_msgs::msg::LaserScan::SharedPtr msg);
+    /// Gets a list of objects of from the lidar scans
+    std::vector<geometry_msgs::msg::PoseStamped> get_objects_from_scan(
+        std::shared_ptr<sensor_msgs::msg::LaserScan>& laser_scan);
     /// Publishes markers visualising the pure pursuit geometry.
-    void publish_visualisation(CommandCalcResult, geometry_msgs::msg::PoseStamped intersection_point,
-                               std::vector<geometry_msgs::msg::PoseStamped> spline);
+    void publish_visualisation(VisualizationComponents vis_compoenets);
     /// Calculates the command to reach the given point.
     CommandCalcResult calculate_command_to_point(const geometry_msgs::msg::PoseStamped& target_point,
                                                  float look_ahead_distance) const;
