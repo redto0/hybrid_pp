@@ -14,6 +14,7 @@ PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions& options)
     max_look_ahead_distance = this->declare_parameter<float>("max_look_ahead_distance", 10.0);
     k_dd = this->declare_parameter<float>("k_dd", 1.0);
     max_speed = this->declare_parameter<float>("max_speed", 6.7056);
+    avoidance_radius = this->declare_parameter<float>("avoidance", 2);
     rear_axle_frame = this->declare_parameter<std::string>("rear_axle_frame", "rear_axle");
     wheel_base = this->declare_parameter<float>("wheel_base", 1.08);
     gravity_constant = this->declare_parameter<float>("gravity_constant", 9.81);
@@ -62,6 +63,8 @@ PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions& options)
 
             {
                 std::unique_lock lk{this->spline_mtx};
+
+                // Get the intersecting path point for calculating the desired turning angle and speed
                 path_result = this->get_path_point(this->path_spline.value());
             }
 
@@ -83,17 +86,20 @@ PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions& options)
                 std::unique_lock lk{this->spline_mtx};
                 std::unique_lock lk2{this->obj_mtx};
 
-                vis_components.intersection_point = (*path_result).intersection_point;
-                vis_components.look_ahead_distance = (*path_result).look_ahead_distance;
+                // All the components used in visualization for this node
+                vis_components.intersection_point = path_result.value().intersection_point;
+                vis_components.look_ahead_distance = path_result.value().look_ahead_distance;
                 vis_components.objects = this->objects;
                 vis_components.path_spline = this->path_spline;
                 vis_components.turning_radius = command.turning_radius;
 
+                // If in debug mode, publish our visuals
                 if (debug) {
                     publish_visualisation(vis_components);
                 }
             }
 
+            // Publish the command to the nav topic
             nav_ack_vel_pub->publish(command.command);
 
             // Run at some rate
@@ -104,7 +110,7 @@ PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions& options)
     }};
 }
 
-void PurePursuitNode::path_cb(nav_msgs::msg::Path::SharedPtr msg) {
+void PurePursuitNode::path_cb(const nav_msgs::msg::Path::SharedPtr msg) {
     if (msg->poses.at(0).header.frame_id.empty()) {
         RCLCPP_INFO(this->get_logger(), "Path has no frame id");
         return;
@@ -114,6 +120,8 @@ void PurePursuitNode::path_cb(nav_msgs::msg::Path::SharedPtr msg) {
         std::unique_lock lk{this->spline_mtx};
         std::unique_lock lk2{this->odom_mtx};
         std::unique_lock lk3{this->obj_mtx};
+
+        // Create a spline from the path message
         this->path_spline = get_path_spline(*msg);
     }
 }
@@ -142,6 +150,7 @@ CommandCalcResult PurePursuitNode::calculate_command_to_point(const geometry_msg
 }
 
 void PurePursuitNode::publish_visualisation(VisualizationComponents vis_compoenets) {
+    // Marker for the green line that predicts our path based of steering angle
     visualization_msgs::msg::Marker path_prediction_marker{};
     // Declares the path prediction marker in the rear axle frame
     path_prediction_marker.header.frame_id = rear_axle_frame;
@@ -155,6 +164,7 @@ void PurePursuitNode::publish_visualisation(VisualizationComponents vis_compoene
     path_prediction_marker.color.a = 1.0;
     path_prediction_marker.color.g = 1.0;
 
+    // Red circle to show the radius of our look ahead distance
     visualization_msgs::msg::Marker look_ahead_distance_marker{};
     // Declares the look ahead marker in the rear axle frame
     look_ahead_distance_marker.header.frame_id = rear_axle_frame;
@@ -168,11 +178,13 @@ void PurePursuitNode::publish_visualisation(VisualizationComponents vis_compoene
     look_ahead_distance_marker.color.a = 1.0;
     look_ahead_distance_marker.color.r = 1.0;
 
+    // Creates a usable vector for visualization of spline path
     std::vector<geometry_msgs::msg::Point> vis_spline;
     for (auto i : vis_compoenets.path_spline.value()) {
         vis_spline.push_back(i.pose.position);
     }
 
+    // Red line for the visualization of our path spline
     visualization_msgs::msg::Marker spline_marker{};
     spline_marker.header.frame_id = this->rear_axle_frame;
     spline_marker.header.stamp = get_clock()->now();
@@ -186,6 +198,7 @@ void PurePursuitNode::publish_visualisation(VisualizationComponents vis_compoene
     spline_marker.color.r = 1.0;
     spline_marker.points = vis_spline;
 
+    // Box to show where our look ahead intersects our path (this is the goal point we navigate to)
     visualization_msgs::msg::Marker intersection_marker;
     intersection_marker.header.frame_id = this->rear_axle_frame;
     intersection_marker.header.stamp = get_clock()->now();
@@ -201,12 +214,13 @@ void PurePursuitNode::publish_visualisation(VisualizationComponents vis_compoene
     intersection_marker.color.r = 0.6;
     intersection_marker.color.b = 0.4;
 
+    // Creates a usable vector for visualization of object points
     std::vector<geometry_msgs::msg::Point> vis_points;
-
     for (auto pose : vis_compoenets.objects) {
         vis_points.push_back(pose.pose.position);
     }
 
+    // Spheres that show the detected objects fromt the lidar scans
     visualization_msgs::msg::Marker object_marker;
     object_marker.header.frame_id = this->rear_axle_frame;
     object_marker.header.stamp = get_clock()->now();
@@ -215,9 +229,9 @@ void PurePursuitNode::publish_visualisation(VisualizationComponents vis_compoene
     object_marker.ns = "hybrid_pp_ns";
     object_marker.id = 1;
     object_marker.points = vis_points;
-    object_marker.scale.x = 0.5;
-    object_marker.scale.y = 0.5;
-    object_marker.scale.z = 0.5;
+    object_marker.scale.x = 0.25;
+    object_marker.scale.y = 0.25;
+    object_marker.scale.z = 0.25;
     object_marker.color.a = 1.0;
     object_marker.color.r = 0.6;
     object_marker.color.b = 0.4;
@@ -313,35 +327,45 @@ void PurePursuitNode::lidar_scan_cb(const sensor_msgs::msg::LaserScan::SharedPtr
 
 std::vector<geometry_msgs::msg::PoseStamped> PurePursuitNode::get_objects_from_scan(
     std::shared_ptr<sensor_msgs::msg::LaserScan>& laser_scan) {
+    // Transfrom for laser scan to rear axle
     auto trans =
         this->tf_buffer->lookupTransform(this->rear_axle_frame, laser_scan->header.frame_id, tf2::TimePointZero);
 
+    // Count var for counting consecutive laser scans under 15 meters
     int count = 0;
 
+    // Map to pair starting and ending indexs for detected object points
     std::map<int, int> obj_index_pairs;
-    std::vector<geometry_msgs::msg::PoseStamped> detected_objects;
+    // List of points detected by lidar
+    std::vector<geometry_msgs::msg::PoseStamped> detected_points;
 
     // needs map for index pairs for objs with consecutive indexs greater than 10
     for (size_t i = 0; i < laser_scan->ranges.size(); i++) {
+        // Init loop vars
         int starting_index = i;
-        int ending_index = i + 1;
+        int ending_index = i;
         count = 0;
-        for (size_t j = i; j < laser_scan->ranges.size() - i; j++) {
+        for (size_t j = i; j < laser_scan->ranges.size(); j++) {
+            // If the laser is less that 15 meterrs away index our count
             if (laser_scan->ranges.at(j) < 15) {
                 count++;
-            } else {
+            } else {  // Else set the ending index and start i at j
                 ending_index = j;
+                i = j;
                 break;
             }
         }
 
-        if (count >= 1) {
-            obj_index_pairs[starting_index] = ending_index;
+        // If our count is greater than 3 we have an object with at least 3 consecutive laser scan points
+        if (count >= 3) {
+            obj_index_pairs[starting_index] = ending_index;  // Add the starting and ending index to our map
         }
     }
 
-    for (auto const& [key, val] : obj_index_pairs) {
-        for (int i = key; i < val; i++) {
+    // Loop through the starting and ending indexs
+    for (auto const [start_index, end_index] : obj_index_pairs) {
+        for (int i = start_index; i < end_index; i++) {
+            // Create the point from the laster scan
             geometry_msgs::msg::PoseStamped point;
             point.header.frame_id = laser_scan->header.frame_id;
             point.pose.position.x = laser_scan->ranges.at(i) * cos(laser_scan->angle_increment * i + (3 * 3.14 / 4));
@@ -349,11 +373,13 @@ std::vector<geometry_msgs::msg::PoseStamped> PurePursuitNode::get_objects_from_s
 
             tf2::doTransform(point, point, trans);
 
-            detected_objects.push_back(point);
+            // Add point to detected objects
+            detected_points.push_back(point);
         }
     }
 
-    return detected_objects;
+    // retrun the list of object points that were detected
+    return detected_points;
 }
 std::vector<geometry_msgs::msg::PoseStamped> PurePursuitNode::get_path_spline(const nav_msgs::msg::Path& path) {
     auto trans = this->tf_buffer->lookupTransform(this->rear_axle_frame, path.header.frame_id, tf2::TimePointZero);
@@ -390,29 +416,37 @@ std::vector<geometry_msgs::msg::PoseStamped> PurePursuitNode::get_path_spline(co
         }
     }
 
+    // Create two points to deviate from the origonal path
     geometry_msgs::msg::Point left_shifted_point;
     geometry_msgs::msg::Point right_shifted_point;
 
+    // Loop through the list of points in the path spline and initialize our points to be shifted
     for (size_t i = 0; i < spline.size(); i++) {
         left_shifted_point = spline.at(i).pose.position;
         right_shifted_point = spline.at(i).pose.position;
 
+        // Two loops checking if path point is too close to the object point
         for (size_t j = 0; j < objects.size(); j++) {
-            while (distance(left_shifted_point, objects.at(j).pose.position) <= 2) {
+            // While to path point too close, shift left
+            while (distance(left_shifted_point, objects.at(j).pose.position) <= avoidance_radius) {
                 left_shifted_point.y -= 0.01;
             }
         }
+
+        // while path point too close shift right
         for (size_t j = 0; j < objects.size(); j++) {
-            while (distance(right_shifted_point, objects.at(j).pose.position) <= 2) {
+            while (distance(right_shifted_point, objects.at(j).pose.position) <= avoidance_radius) {
                 right_shifted_point.y += 0.01;
             }
         }
 
+        // Choose which of the shifted points we want based of which one deviated less from the original path
         spline.at(i).pose.position = distance(left_shifted_point, spline.at(i).pose.position) <=
                                              distance(right_shifted_point, spline.at(i).pose.position)
                                          ? left_shifted_point
                                          : right_shifted_point;
     }
 
+    // Return the spline created from path after all its avoidance processing
     return spline;
 }

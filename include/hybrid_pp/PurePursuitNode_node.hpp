@@ -62,6 +62,8 @@ private:
     float max_speed;
     float wheel_base;
     float gravity_constant;
+    /// Radius for obstacle avoidance
+    float avoidance_radius;
     std::string rear_axle_frame;
     /// Constant to multiply by speed for look ahead distance calculation.
     float k_dd;
@@ -114,11 +116,6 @@ private:
         this->nav_ack_vel_pub->publish(stop);
     }
 
-    void avoid_box();
-
-    std::optional<PathCalcResult> get_path_point(std::vector<geometry_msgs::msg::PoseStamped> path_spline);
-    std::vector<geometry_msgs::msg::PoseStamped> get_path_spline(const nav_msgs::msg::Path& path);
-
 public:
     PurePursuitNode(const rclcpp::NodeOptions& options);
 
@@ -128,14 +125,18 @@ public:
     void odom_speed_cb(nav_msgs::msg::Odometry::SharedPtr msg);
     /// Callback for getting getting and pre-prossesing LIDAR scans
     void lidar_scan_cb(sensor_msgs::msg::LaserScan::SharedPtr msg);
-    /// Gets a list of objects of from the lidar scans
-    std::vector<geometry_msgs::msg::PoseStamped> get_objects_from_scan(
-        std::shared_ptr<sensor_msgs::msg::LaserScan>& laser_scan);
     /// Publishes markers visualising the pure pursuit geometry.
     void publish_visualisation(VisualizationComponents vis_compoenets);
     /// Calculates the command to reach the given point.
     CommandCalcResult calculate_command_to_point(const geometry_msgs::msg::PoseStamped& target_point,
                                                  float look_ahead_distance) const;
+    /// Gets a lits of grouped point clusters to be used as an object to avoid
+    std::vector<geometry_msgs::msg::PoseStamped> get_objects_from_scan(
+        std::shared_ptr<sensor_msgs::msg::LaserScan>& laser_scan);
+    /// Get the point where the look ahead distance intersects the path
+    std::optional<PathCalcResult> get_path_point(std::vector<geometry_msgs::msg::PoseStamped> path_spline);
+    /// Creates a spline from the path recived from path planner and also checks if it needs to avoid objects
+    std::vector<geometry_msgs::msg::PoseStamped> get_path_spline(const nav_msgs::msg::Path& path);
 
     ~PurePursuitNode() override { this->stop_token.store(true); }
 };
