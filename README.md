@@ -9,18 +9,16 @@ From package '[hybrid_pp](https://github.com/ISC-Project-Phoenix/hybrid_pp)'
 ## Summary
 
 Path tracking implementation of the pure pursuit algorithm used to command velocity and ackerman angle to navigate to
-calculated points along a selected path. The hybrid section
-will come into play with the use of the lidar and a TBD obstacle avoidance algorithm. This is a statless implementation
-and works
-only off its subscriptions.
+calculated points along a selected path. In addition to standard pure pursuit, we also add additional obstacle avoidance
+via a repulsion field-esk algorithm. This works on LiDAR scans, and wraps paths around any obstacle in front of the bot.
 
 ### Algorithm
 
 Currently we take in the path from obj_planner and create a spline from the list of points. Then based off our current
 speed we calculate the look ahead distance which is used to check the point of intersection infront of us along the
 spline. That point of intersection then becomes our target point to which we calculate our steering angle and command
-velocity. Currently no implementation of an obstical avoidance algorithm, but there are planes to use
-the [AEB Algorithm](../embed/AEB.md).
+velocity. When paths are first received, we massage each spline point to move away from local scan points, where each
+point contributes to the change. This causes the spline to wrap around obstacles.
 
 ### Publishes
 
@@ -33,6 +31,7 @@ the [AEB Algorithm](../embed/AEB.md).
 - `/odom`: Odometry, this is used to get the linear velocity to determine a look ahead distance.
 - `/path`: This is the path that is being supplied from the obj_planner node, should be a list of midpoints between
   respective left and right cones.
+- `/scan`: Lidar scans to avoid.
 
 ## Params
 
@@ -47,4 +46,5 @@ the [AEB Algorithm](../embed/AEB.md).
 - `gravity_constant`: The constant acceleration due to gravity.
 - `debug`: Debug flag to determine if we want to publish the visualization markers.
 - `stop_on_no_path`: If true, stops the vehicle if no more points in the path are found. Else continues the last
-  command.
+- `avoidance`: If spline points are under this value in meters from obstacles, then that obstacle will nudge the spline
+  point away. Smaller values will lead to the kart moving closer to obstacles.
