@@ -116,6 +116,31 @@ private:
         this->nav_ack_vel_pub->publish(stop);
     }
 
+    /// Transforms a path into a given target frame.
+    void transform_path(nav_msgs::msg::Path& path, std::string target_frame) {
+        auto trans = this->tf_buffer->lookupTransform(target_frame, path.header.frame_id, tf2::TimePointZero);
+
+        for (auto& pose : path.poses) {
+            tf2::doTransform(pose, pose, trans);
+            pose.header.frame_id = target_frame;
+        }
+        path.header.frame_id = target_frame;
+    }
+
+    /// Transforms a spline into a given target frame.
+    void transform_path(std::vector<geometry_msgs::msg::PoseStamped> path, std::string target_frame) {
+        if (path.empty()) {
+            return;
+        }
+
+        auto trans = this->tf_buffer->lookupTransform(target_frame, path[0].header.frame_id, tf2::TimePointZero);
+
+        for (auto& pose : path) {
+            tf2::doTransform(pose, pose, trans);
+            pose.header.frame_id = target_frame;
+        }
+    }
+
 public:
     PurePursuitNode(const rclcpp::NodeOptions& options);
 
@@ -134,7 +159,7 @@ public:
     std::vector<geometry_msgs::msg::PoseStamped> get_objects_from_scan(
         std::shared_ptr<sensor_msgs::msg::LaserScan>& laser_scan);
     /// Get the point where the look ahead distance intersects the path
-    std::optional<PathCalcResult> get_path_point(std::vector<geometry_msgs::msg::PoseStamped> path_spline);
+    std::optional<PathCalcResult> get_path_point(const std::vector<geometry_msgs::msg::PoseStamped>& path_spline);
     /// Creates a spline from the path recived from path planner and also checks if it needs to avoid objects
     std::vector<geometry_msgs::msg::PoseStamped> get_path_spline(const nav_msgs::msg::Path& path);
 
