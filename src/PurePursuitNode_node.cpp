@@ -360,7 +360,7 @@ std::vector<geometry_msgs::msg::PoseStamped> PurePursuitNode::get_objects_from_s
         }
 
         // If our count is greater than 3 we have an object with at least 3 consecutive laser scan points
-        if (count >= 3) {
+        if (count >= 7) {
             obj_index_pairs[starting_index] = ending_index;  // Add the starting and ending index to our map
         }
     }
