@@ -17,6 +17,7 @@
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/laser_scan.hpp"
 #include "visualization_msgs/msg/marker.hpp"
+#include "hybrid_pp/filters.hpp"
 
 /// Pure pursuit command result, with components
 struct CommandCalcResult {
@@ -88,6 +89,8 @@ private:
     std::optional<std::vector<geometry_msgs::msg::PoseStamped>> path_spline;
     /// A list of positions of the objects detected by the lidar
     std::vector<geometry_msgs::msg::PoseStamped> objects;
+    /// Command filter
+    MovingAverageFilter command_filter;
 
     // TF
     std::shared_ptr<tf2_ros::TransformListener> transform_listener;

@@ -7,7 +7,9 @@ using namespace std::placeholders;
 using namespace std::chrono_literals;
 
 PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions& options)
-    : Node("PurePursuitNode", options), rate(this->declare_parameter<float>("frequency", 30)) {
+    : Node("PurePursuitNode", options),
+      rate(this->declare_parameter<float>("frequency", 30)),
+      command_filter(this->declare_parameter<int>("filter_window", 10)) {
     // Params
     min_look_ahead_distance = this->declare_parameter<float>("min_look_ahead_distance",
                                                              3.85);  // This is set to the min turning radius of phnx
@@ -82,6 +84,9 @@ PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions& options)
             auto command =
                 this->calculate_command_to_point((*path_result).intersection_point, (*path_result).look_ahead_distance);
 
+            // Filter command
+            command.command = this->command_filter.update(command.command);
+
             {
                 std::unique_lock lk{this->spline_mtx};
                 std::unique_lock lk2{this->obj_mtx};
@@ -130,13 +135,14 @@ void PurePursuitNode::path_cb(const nav_msgs::msg::Path::SharedPtr msg) {
 
 CommandCalcResult PurePursuitNode::calculate_command_to_point(const geometry_msgs::msg::PoseStamped& target_point,
                                                               float look_ahead_distance) const {
+    ackermann_msgs::msg::AckermannDrive ack_msg{};
+
     // Calculate the angle between the robot and the goal.
     float alpha = atan2f((float)target_point.pose.position.y, (float)target_point.pose.position.x);
 
     // Set the desired steering angle and set it to the ackerman message
     float steering_angle = atanf(2.0f * wheel_base * sinf(alpha) / look_ahead_distance);
-    static ackermann_msgs::msg::AckermannDrive ack_msg{};
-    ack_msg.steering_angle = (steering_angle + ack_msg.steering_angle) / 2;
+    ack_msg.steering_angle = steering_angle;
 
     // Gets the distance to the instantaneous center of rotation from the center of the rear axle (turning radius)
     float distance_to_icr = wheel_base / std::tan(steering_angle);
@@ -145,7 +151,7 @@ CommandCalcResult PurePursuitNode::calculate_command_to_point(const geometry_msg
     // This finds the fastest speed that can be taken without breaking friction and slipping.
     float set_speed =
         std::clamp(std::sqrt(this->gravity_constant * std::abs(distance_to_icr) * 0.3f), 0.1f, this->max_speed);
-    ack_msg.speed = (set_speed + ack_msg.speed) / 2;
+    ack_msg.speed = set_speed;
 
     CommandCalcResult out{ack_msg, look_ahead_distance, distance_to_icr};
     return out;

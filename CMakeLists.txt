@@ -20,7 +20,7 @@ find_package(visualization_msgs REQUIRED)
 find_package(laser_geometry REQUIRED)
 
 # Add source for node executable (link non-ros dependencies here)
-add_executable(hybrid_pp src/PurePursuitNode.cpp src/PurePursuitNode_node.cpp)
+add_executable(hybrid_pp src/PurePursuitNode.cpp src/PurePursuitNode_node.cpp src/filters.cpp)
 target_include_directories(hybrid_pp PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>)
@@ -67,6 +67,7 @@ if (BUILD_TESTING)
             tests/unit.cpp
             # Remember to add node source files
             src/PurePursuitNode_node.cpp
+            src/filters.cpp
             )
     ament_target_dependencies(${PROJECT_NAME}-test ${dependencies})
     target_include_directories(${PROJECT_NAME}-test PUBLIC

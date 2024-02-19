@@ -45,6 +45,7 @@ point contributes to the change. This causes the spline to wrap around obstacles
 - `wheel_base`: The wheelbase of phoenix in meters.
 - `gravity_constant`: The constant acceleration due to gravity.
 - `debug`: Debug flag to determine if we want to publish the visualization markers.
+- `filter_window`: Size of filter used to dampen commands.
 - `stop_on_no_path`: If true, stops the vehicle if no more points in the path are found. Else continues the last
 - `avoidance`: If spline points are under this value in meters from obstacles, then that obstacle will nudge the spline
   point away. Smaller values will lead to the kart moving closer to obstacles.
