@@ -377,8 +377,8 @@ std::vector<geometry_msgs::msg::PoseStamped> PurePursuitNode::get_objects_from_s
             // Create the point from the laser scan
             geometry_msgs::msg::PoseStamped point;
             point.header.frame_id = laser_scan->header.frame_id;
-            point.pose.position.x = laser_scan->ranges.at(i) * cos(laser_scan->angle_increment * i + (3 * 3.14 / 4));
-            point.pose.position.y = laser_scan->ranges.at(i) * sin(laser_scan->angle_increment * i + (3 * 3.14 / 4));
+            point.pose.position.x = laser_scan->ranges.at(i) * cos(laser_scan->angle_increment * i);
+            point.pose.position.y = laser_scan->ranges.at(i) * sin(laser_scan->angle_increment * i);
 
             // Add point to detected objects
             detected_points.push_back(point);
