@@ -73,7 +73,6 @@ PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions& options)
             // If no way to follow path, just stop
             if (!path_result.has_value()) {
                 if (this->get_parameter("stop_on_no_path").as_bool()) {
-                    RCLCPP_INFO(this->get_logger(), "No intersection with path, stopping!");
                     this->publish_stop_command();
                 }
 
