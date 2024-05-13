@@ -42,6 +42,7 @@ point contributes to the change. This causes the spline to wrap around obstacles
 - `k_dd`: A constant multiplier used to scale the speed in the calculation for look ahead distance.
 - `rear_axle_frame`: A string used for the odom to rear_axle transformation.
 - `max_speed`:  Max possible speed of phoenix in meters per second.
+- `min_speed`:  Min required speed in m/s.
 - `wheel_base`: The wheelbase of phoenix in meters.
 - `gravity_constant`: The constant acceleration due to gravity.
 - `debug`: Debug flag to determine if we want to publish the visualization markers.
