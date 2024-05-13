@@ -61,6 +61,7 @@ private:
     float min_look_ahead_distance;
     float max_look_ahead_distance;
     float max_speed;
+    float min_speed;
     float wheel_base;
     float gravity_constant;
     /// Radius for obstacle avoidance

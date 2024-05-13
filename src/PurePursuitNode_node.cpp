@@ -16,6 +16,7 @@ PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions& options)
     max_look_ahead_distance = this->declare_parameter<float>("max_look_ahead_distance", 10.0);
     k_dd = this->declare_parameter<float>("k_dd", 1.0);
     max_speed = this->declare_parameter<float>("max_speed", 6.7056);
+    max_speed = this->declare_parameter<float>("min_speed", 0.5);
     avoidance_radius = this->declare_parameter<float>("avoidance_radius", 2);
     rear_axle_frame = this->declare_parameter<std::string>("rear_axle_frame", "rear_axle");
     wheel_base = this->declare_parameter<float>("wheel_base", 1.08);
@@ -148,8 +149,8 @@ CommandCalcResult PurePursuitNode::calculate_command_to_point(const geometry_msg
 
     // Set the speed based off the eq v = sqrt(static_friction * gravity * turn_radius) with static friction being 1.
     // This finds the fastest speed that can be taken without breaking friction and slipping.
-    float set_speed =
-        std::clamp(std::sqrt(this->gravity_constant * std::abs(distance_to_icr) * 0.3f), 0.1f, this->max_speed);
+    float set_speed = std::clamp(std::sqrt(this->gravity_constant * std::abs(distance_to_icr) * 0.3f), this->min_speed,
+                                 this->max_speed);
     ack_msg.speed = set_speed;
 
     CommandCalcResult out{ack_msg, look_ahead_distance, distance_to_icr};
@@ -376,8 +377,8 @@ std::vector<geometry_msgs::msg::PoseStamped> PurePursuitNode::get_objects_from_s
             // Create the point from the laser scan
             geometry_msgs::msg::PoseStamped point;
             point.header.frame_id = laser_scan->header.frame_id;
-            point.pose.position.x = laser_scan->ranges.at(i) * cos(laser_scan->angle_increment * i);
-            point.pose.position.y = laser_scan->ranges.at(i) * sin(laser_scan->angle_increment * i);
+            point.pose.position.x = laser_scan->ranges.at(i) * sin(laser_scan->angle_increment * i);
+            point.pose.position.y = laser_scan->ranges.at(i) * -cos(laser_scan->angle_increment * i);
 
             // Add point to detected objects
             detected_points.push_back(point);
