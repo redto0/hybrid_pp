@@ -1,3 +1,4 @@
+
 #include "hybrid_pp/PurePursuitNode_node.hpp"
 
 // For _1
@@ -341,7 +342,6 @@ void PurePursuitNode::lidar_scan_cb(const sensor_msgs::msg::LaserScan::SharedPtr
 std::vector<geometry_msgs::msg::PoseStamped> PurePursuitNode::get_objects_from_scan(
     std::shared_ptr<sensor_msgs::msg::LaserScan>& laser_scan) {
     // Count var for counting consecutive laser scans under 15 meters
-    int count = 0;
 
     // Map to pair starting and ending indexes for detected object points
     std::unordered_map<int, int> obj_index_pairs;
@@ -353,7 +353,7 @@ std::vector<geometry_msgs::msg::PoseStamped> PurePursuitNode::get_objects_from_s
         // Init loop vars
         int starting_index = i;
         int ending_index = i;
-        count = 0;
+        int count = 0;
         for (size_t j = i; j < laser_scan->ranges.size(); j++) {
             // If the laser is less than 15 meters away index our count
             if (laser_scan->ranges.at(j) < 15) {
@@ -366,7 +366,7 @@ std::vector<geometry_msgs::msg::PoseStamped> PurePursuitNode::get_objects_from_s
         }
 
         // If our count is greater than 3 we have an object with at least 3 consecutive laser scan points
-        if (count >= 7) {
+        if (count >= 450) { //TODO make param
             obj_index_pairs[starting_index] = ending_index;  // Add the starting and ending index to our map
         }
     }
@@ -377,8 +377,9 @@ std::vector<geometry_msgs::msg::PoseStamped> PurePursuitNode::get_objects_from_s
             // Create the point from the laser scan
             geometry_msgs::msg::PoseStamped point;
             point.header.frame_id = laser_scan->header.frame_id;
-            point.pose.position.x = laser_scan->ranges.at(i) * sin(laser_scan->angle_increment * i);
-            point.pose.position.y = laser_scan->ranges.at(i) * -cos(laser_scan->angle_increment * i);
+	    // TODO hardcoded for ISC sick angles
+            point.pose.position.x = laser_scan->ranges.at(i) * -cos(laser_scan->angle_increment * i + (45 * M_PI / 180));
+            point.pose.position.y = laser_scan->ranges.at(i) * -sin(laser_scan->angle_increment * i + (45 * M_PI / 180));
 
             // Add point to detected objects
             detected_points.push_back(point);

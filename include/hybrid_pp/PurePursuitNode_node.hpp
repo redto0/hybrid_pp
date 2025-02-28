@@ -117,6 +117,9 @@ private:
     /// Publishes a zero move command
     void publish_stop_command() {
         ackermann_msgs::msg::AckermannDrive stop{};
+	//TODO hotfix to get left at comp
+	stop.steering_angle = 0.27;
+	stop.speed = 1.0;
         this->nav_ack_vel_pub->publish(stop);
     }
 
