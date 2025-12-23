@@ -148,10 +148,58 @@ void PurePursuitNode::path_cb(const nav_msgs::msg::Path::SharedPtr msg) {
         std::unique_lock lk2{this->obj_mtx};
 
         // Create a spline from the path message
-        auto holder = get_path_spline(*msg);
-        if (holder.has_value()) {
-            this->path_spline = holder.value();
-        }  // otherwise we do nothing!
+        auto new_path = get_path_spline(*msg);
+        if (new_path.has_value()) {
+            auto old_spline = this->path_spline;
+            if (!old_spline.has_value()) {
+                this->path_spline = new_path.value();
+                return;
+            }
+            int old_size = old_spline.has_value() ? old_spline.value().size() : 0;
+            int new_size = new_path.value().size();
+            std::vector<geometry_msgs::msg::PoseStamped> combined_path;
+            float min_dist = std::numeric_limits<float>::max();
+
+            for (int i = 0; i < new_size; i++) {
+                // compare the distance from the origin to each point and find the minimum distance to the origin
+                if (std::sqrt(std::pow(new_path.value().at(i).pose.position.x, 2) +
+                              std::pow(new_path.value().at(i).pose.position.y, 2)) < min_dist) {
+                    min_dist = std::sqrt(std::pow(new_path.value().at(i).pose.position.x, 2) +
+                                         std::pow(new_path.value().at(i).pose.position.y, 2));
+                }
+            }
+            while (old_size > 0 || new_size > 0) {
+                // compare distances and choose the smaller one choom
+                if (old_size > 0 && new_size > 0) {
+                    if (std::sqrt(std::pow(old_spline.value().at(old_size - 1).pose.position.x, 2) +
+                                  std::pow(old_spline.value().at(old_size - 1).pose.position.y, 2)) <
+                        std::sqrt(std::pow(new_path.value().at(new_size - 1).pose.position.x, 2) +
+                                  std::pow(new_path.value().at(new_size - 1).pose.position.y, 2))) {
+                        // if the minium distance is less than the min dont use it
+                        if (std::sqrt(std::pow(old_spline.value().at(old_size - 1).pose.position.x, 2) +
+                                      std::pow(old_spline.value().at(old_size - 1).pose.position.y, 2)) > min_dist) {
+                            // add to the combined path
+                            combined_path.push_back(old_spline.value().at(old_size - 1));
+                        }
+                        old_size--;
+                    } else {
+                        combined_path.push_back(new_path.value().at(new_size - 1));
+                        new_size--;
+                    }
+                } else if (old_size > 0) {
+                    combined_path.push_back(old_spline.value().at(old_size - 1));
+                    old_size--;
+                } else if (new_size > 0) {
+                    combined_path.push_back(new_path.value().at(new_size - 1));
+                    new_size--;
+                } else {
+                    break;
+                }
+            }
+
+            // return the combined path
+            this->path_spline = combined_path;
+        }
     }
 }
 
