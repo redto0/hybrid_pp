@@ -15,7 +15,7 @@ PurePursuitNode::PurePursuitNode(const rclcpp::NodeOptions& options)
     min_look_ahead_distance = this->declare_parameter<float>("min_look_ahead_distance",
                                                              3.85);  // This is set to the min turning radius of phnx
     max_look_ahead_distance = this->declare_parameter<float>("max_look_ahead_distance", 10.0);
-    k_dd = this->declare_parameter<float>("k_dd", 1.0);
+    k_dd = this->declare_parameter<float>("k_dd", 1.2);
     max_speed = this->declare_parameter<float>("max_speed", 6.7056);
     min_speed = this->declare_parameter<float>("min_speed", 0.5);
     avoidance_radius = this->declare_parameter<float>("avoidance_radius", 2);
@@ -152,51 +152,39 @@ void PurePursuitNode::path_cb(const nav_msgs::msg::Path::SharedPtr msg) {
         if (new_path.has_value()) {
             auto old_spline = this->path_spline;
             if (!old_spline.has_value()) {
+                // std::reverse(new_path->begin(), new_path->end());
+                this->path_spline = new_path.value();
+                return;
+            } else {
                 this->path_spline = new_path.value();
                 return;
             }
             int old_size = old_spline.has_value() ? old_spline.value().size() : 0;
             int new_size = new_path.value().size();
             std::vector<geometry_msgs::msg::PoseStamped> combined_path;
-            float min_dist = std::numeric_limits<float>::max();
+            // float min_dist = std::numeric_limits<float>::max();
+            float max_dist = std::numeric_limits<float>::lowest();
 
             for (int i = 0; i < new_size; i++) {
                 // compare the distance from the origin to each point and find the minimum distance to the origin
-                if (std::sqrt(std::pow(new_path.value().at(i).pose.position.x, 2) +
-                              std::pow(new_path.value().at(i).pose.position.y, 2)) < min_dist) {
-                    min_dist = std::sqrt(std::pow(new_path.value().at(i).pose.position.x, 2) +
-                                         std::pow(new_path.value().at(i).pose.position.y, 2));
+                float dist = std::sqrt(std::pow(new_path.value().at(i).pose.position.x, 2) +
+                                       std::pow(new_path.value().at(i).pose.position.y, 2));
+                // check if current distance is far than the max distance
+                if (dist > max_dist) {
+                    max_dist = dist;
                 }
             }
-            while (old_size > 0 || new_size > 0) {
-                // compare distances and choose the smaller one choom
-                if (old_size > 0 && new_size > 0) {
-                    if (std::sqrt(std::pow(old_spline.value().at(old_size - 1).pose.position.x, 2) +
-                                  std::pow(old_spline.value().at(old_size - 1).pose.position.y, 2)) <
-                        std::sqrt(std::pow(new_path.value().at(new_size - 1).pose.position.x, 2) +
-                                  std::pow(new_path.value().at(new_size - 1).pose.position.y, 2))) {
-                        // if the minium distance is less than the min dont use it
-                        if (std::sqrt(std::pow(old_spline.value().at(old_size - 1).pose.position.x, 2) +
-                                      std::pow(old_spline.value().at(old_size - 1).pose.position.y, 2)) > min_dist) {
-                            // add to the combined path
-                            combined_path.push_back(old_spline.value().at(old_size - 1));
-                        }
-                        old_size--;
-                    } else {
-                        combined_path.push_back(new_path.value().at(new_size - 1));
-                        new_size--;
-                    }
-                } else if (old_size > 0) {
-                    combined_path.push_back(old_spline.value().at(old_size - 1));
-                    old_size--;
-                } else if (new_size > 0) {
-                    combined_path.push_back(new_path.value().at(new_size - 1));
-                    new_size--;
-                } else {
-                    break;
-                }
-            }
+            // since the path is reversed, we need to reverse the new path to match the old path.
 
+            // std::reverse(new_path->begin(), new_path->end());
+            combined_path = new_path.value();
+            for (int i = 0; i < old_size; i++) {
+                // compare the distance from the origin to each point and find the minimum distance to the origin
+                if (std::sqrt(std::pow(old_spline.value().at(i).pose.position.x, 2) +
+                              std::pow(old_spline.value().at(i).pose.position.y, 2)) > max_dist) {
+                    combined_path.push_back(old_spline.value().at(i));
+                }
+            }
             // return the combined path
             this->path_spline = combined_path;
         }
@@ -219,7 +207,7 @@ CommandCalcResult PurePursuitNode::calculate_command_to_point(const geometry_msg
 
     // Set the speed based off the eq v = sqrt(static_friction * gravity * turn_radius) with static friction being 1.
     // This finds the fastest speed that can be taken without breaking friction and slipping.
-    float set_speed = std::clamp(std::sqrt(this->gravity_constant * std::abs(distance_to_icr) * 0.3f), this->min_speed,
+    float set_speed = std::clamp(std::sqrt(this->gravity_constant * std::abs(distance_to_icr) * 0.2f), this->min_speed,
                                  this->max_speed);
     ack_msg.speed = set_speed;
 
